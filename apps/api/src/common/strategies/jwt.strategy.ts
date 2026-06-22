@@ -24,7 +24,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       select: {
         id: true, email: true, fullName: true,
         gender: true, status: true, bloodType: true,
-        isDonor: true, avatarUrl: true,
+        isDonor: true, avatarUrl: true, role: true,
       },
     });
     if (!user || user.status === 'deleted') {

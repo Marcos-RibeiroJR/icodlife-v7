@@ -70,6 +70,25 @@ enum ShareAccessLevel {
   custom
 }
 
+enum UserRole {
+  user
+  doctor
+  admin
+}
+
+enum CrmStatus {
+  pending
+  verified
+  suspended
+  canceled
+}
+
+enum PatientDoctorStatus {
+  pending
+  active
+  ended
+}
+
 // Exam result status
 enum ExamItemStatus {
   normal
@@ -159,6 +178,8 @@ model User {
   allergies             String[]
   chronicConditions     String[]  @map("chronic_conditions")
 
+  role                  UserRole  @default(user)
+
   lastLoginAt           DateTime? @map("last_login_at")
   emailVerifiedAt       DateTime? @map("email_verified_at")
   phoneVerifiedAt       DateTime? @map("phone_verified_at")
@@ -188,6 +209,10 @@ model User {
   lifestyleProfile      LifestyleProfile?
   lifestyleSnapshots    LifestyleSnapshot[]
   bloodPressureReadings BloodPressureReading[]
+
+  // Sprint 6 — Módulo Doutor
+  doctor                Doctor?
+  patientDoctors        PatientDoctor[]
 
   @@map("users")
 }
@@ -788,4 +813,77 @@ model BloodPressureReading {
 
   @@index([userId, measuredAt])
   @@map("blood_pressure_readings")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sprint 6 — Módulo Doutor
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Contador por UF para gerar DR.XXXXX.UF sequencial
+model DoctorCounter {
+  id        Int    @id @default(autoincrement())
+  uf        String @unique
+  nextValue Int    @default(1) @map("next_value")
+
+  @@map("doctor_counter")
+}
+
+model Doctor {
+  id            String    @id @default(uuid())
+  userId        String    @unique @map("user_id")
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  doctorId      String    @unique @map("doctor_id")   // ex: DR.00001.SP
+  crm           String
+  uf            String
+
+  crmStatus     CrmStatus @default(pending) @map("crm_status")
+  cfmVerifiedAt DateTime? @map("cfm_verified_at")
+
+  specialties   String[]
+  healthPlans   String[]  @map("health_plans")
+
+  bio           String?   @db.Text
+  consultPrice  Decimal?  @map("consult_price")
+  addressCity   String?   @map("address_city")
+  addressState  String?   @map("address_state")
+  phone         String?
+  website       String?
+
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  patients      PatientDoctor[]
+
+  @@index([uf, crmStatus])
+  @@index([specialties])
+  @@map("doctors")
+}
+
+model PatientDoctor {
+  id           String              @id @default(uuid())
+  userId       String              @map("user_id")
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Médico interno (cadastrado no IcodLife)
+  doctorId     String?             @map("doctor_id")
+  doctor       Doctor?             @relation(fields: [doctorId], references: [id])
+
+  // Médico externo (não cadastrado no IcodLife)
+  externalCrm  String?             @map("external_crm")
+  externalUf   String?             @map("external_uf")
+  externalName String?             @map("external_name")
+
+  specialty    String?
+  status       PatientDoctorStatus @default(active)
+
+  connectedAt  DateTime            @default(now()) @map("connected_at")
+  endedAt      DateTime?           @map("ended_at")
+  notes        String?             @db.Text
+
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+
+  @@unique([userId, doctorId])
+  @@map("patient_doctors")
 }

@@ -19,6 +19,9 @@ import { OccupationalHealthModule } from './modules/occupational-health/occupati
 // v7
 import { ExamResultsModule } from './modules/exam-results/exam-results.module';
 import { LifestyleModule } from './modules/lifestyle/lifestyle.module';
+// Sprint 6 — Módulo Doutor
+import { DoctorModule } from './modules/doctor/doctor.module';
+import { MeusMedicosModule } from './modules/meus-medicos/meus-medicos.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { RedisModule } from './common/redis/redis.module';
 import { AuditModule } from './common/audit/audit.module';
@@ -47,6 +50,9 @@ import { AuditModule } from './common/audit/audit.module';
     ExamResultsModule,
     LifestyleModule,
     BloodPressureModule,
+    // ── Sprint 6 — Módulo Doutor ───────────────────────────────────
+    DoctorModule,
+    MeusMedicosModule,
   ],
 })
 export class AppModule {}
