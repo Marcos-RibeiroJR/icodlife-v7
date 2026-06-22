@@ -1,0 +1,726 @@
+// IcodLife — Prisma Schema v7
+// Banco: PostgreSQL 16
+// LGPD: dados sensíveis marcados
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── ENUMS ─────────────────────────────────────────────────────────────────────
+
+enum GenderType {
+  male
+  female
+  other
+}
+
+enum BloodType {
+  A_PLUS   @map("A+")
+  A_MINUS  @map("A-")
+  B_PLUS   @map("B+")
+  B_MINUS  @map("B-")
+  AB_PLUS  @map("AB+")
+  AB_MINUS @map("AB-")
+  O_PLUS   @map("O+")
+  O_MINUS  @map("O-")
+  unknown
+}
+
+enum UserStatus {
+  pending_verification
+  active
+  suspended
+  deleted
+}
+
+enum FamilyRelationship {
+  father
+  mother
+  sibling
+  child
+  grandparent
+  grandchild
+  spouse
+  partner
+  other
+}
+
+enum FamilyInviteStatus {
+  pending
+  accepted
+  declined
+  expired
+}
+
+enum ConsentType {
+  terms_of_use
+  data_processing
+  data_sharing_b2b
+  marketing
+}
+
+enum ShareAccessLevel {
+  basic
+  full
+  custom
+}
+
+// Exam result status
+enum ExamItemStatus {
+  normal
+  low
+  high
+  critical_low
+  critical_high
+  pending
+}
+
+// ── GEOGRAPHY ─────────────────────────────────────────────────────────────────
+
+model Country {
+  id        Int     @id @default(autoincrement())
+  icodeNum  String  @map("icode_num")   // "01" = Brasil
+  name      String
+  nameEn    String? @map("name_en")
+  code      String  @unique             // "BR", "US", etc.
+  isActive  Boolean @default(true) @map("is_active")
+  states    State[]
+  users     User[]
+  @@map("countries")
+}
+
+model Region {
+  id        Int     @id @default(autoincrement())
+  icodeNum  String  @map("icode_num")   // "01" = Sudeste
+  name      String                      // "Sudeste", "Nordeste"
+  states    State[]
+  @@map("regions")
+}
+
+model State {
+  id         Int     @id @default(autoincrement())
+  icodeNum   String  @map("icode_num")  // "01" = São Paulo
+  name       String                     // "São Paulo"
+  uf         String  @unique            // "SP", "RJ"
+  ibgeCode   String? @map("ibge_code")
+  countryId  Int     @map("country_id")
+  country    Country @relation(fields: [countryId], references: [id])
+  regionId   Int     @map("region_id")
+  region     Region  @relation(fields: [regionId], references: [id])
+  users      User[]
+  @@map("states")
+}
+
+// Contador global de ICODEs — garante sequencial único
+model IcodeCounter {
+  id         Int  @id @default(autoincrement())
+  nextValue  BigInt @default(1) @map("next_value")
+  @@map("icode_counter")
+}
+
+// ── MODELS ────────────────────────────────────────────────────────────────────
+
+model User {
+  id                    String    @id @default(uuid())
+  keycloakId            String?   @unique @map("keycloak_id")
+  email                 String    @unique
+  phone                 String?
+  cpf                   String?   @unique
+  fullName              String    @map("full_name")
+  dateOfBirth           DateTime  @map("date_of_birth")
+  gender                GenderType
+  bloodType             BloodType @default(unknown) @map("blood_type")
+  isDonor               Boolean   @default(false) @map("is_donor")
+  avatarUrl             String?   @map("avatar_url")
+  status                UserStatus @default(pending_verification)
+  passwordHash          String?   @map("password_hash")
+
+  // ICODE — identificador único e imutável
+  icode                 String?   @unique
+  icodeCountryId        Int?      @map("icode_country_id")
+  icodeCountry          Country?  @relation(fields: [icodeCountryId], references: [id])
+  icodeStateId          Int?      @map("icode_state_id")
+  icodeState            State?    @relation(fields: [icodeStateId], references: [id])
+
+  // Localização (para análise regional BigData — LGPD anonimizado)
+  cityName              String?   @map("city_name")
+  stateCode             String?   @map("state_code")
+  ibgeCode              String?   @map("ibge_code")
+
+  emergencyContactName  String?   @map("emergency_contact_name")
+  emergencyContactPhone String?   @map("emergency_contact_phone")
+  emergencyContactRel   String?   @map("emergency_contact_rel")
+
+  allergies             String[]
+  chronicConditions     String[]  @map("chronic_conditions")
+
+  lastLoginAt           DateTime? @map("last_login_at")
+  emailVerifiedAt       DateTime? @map("email_verified_at")
+  phoneVerifiedAt       DateTime? @map("phone_verified_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  deletedAt             DateTime? @map("deleted_at")
+
+  consents              UserConsent[]
+  sessions              UserSession[]
+  auditLogs             AuditLog[]
+  familyMembersOwned    FamilyMember[] @relation("FamilyOwner")
+  familyMembersLinked   FamilyMember[] @relation("FamilyLinkedUser")
+  healthRecords         HealthRecord[]
+  appointments          Appointment[]
+  medications           Medication[]
+  medicationLogs        MedicationLog[]
+  menstrualCycles       MenstrualCycle[]
+  menstrualDailyLogs    MenstrualDailyLog[]
+  shareTokens           ShareToken[]
+  aiHealthChats         AiHealthChat[]
+  notifications         Notification[]
+  psychosocialAssessments PsychosocialAssessment[]
+  ophthalmologyExams      OphthalmologyExam[]
+  ophthalmologyHistory    OphthalmologyHistory[]
+  // v7
+  examResults           ExamResult[]
+  lifestyleProfile      LifestyleProfile?
+  lifestyleSnapshots    LifestyleSnapshot[]
+
+  @@map("users")
+}
+
+model UserConsent {
+  id          String      @id @default(uuid())
+  userId      String      @map("user_id")
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  consentType ConsentType @map("consent_type")
+  version     String
+  accepted    Boolean
+  ipAddress   String?     @map("ip_address")
+  userAgent   String?     @map("user_agent")
+  acceptedAt  DateTime    @default(now()) @map("accepted_at")
+  revokedAt   DateTime?   @map("revoked_at")
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  @@map("user_consents")
+}
+
+model UserSession {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshToken String   @unique @map("refresh_token")
+  deviceInfo   Json?    @map("device_info")
+  ipAddress    String?  @map("ip_address")
+  expiresAt    DateTime @map("expires_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  lastUsedAt   DateTime @default(now()) @map("last_used_at")
+
+  @@map("user_sessions")
+}
+
+model AuditLog {
+  id           BigInt   @id @default(autoincrement())
+  userId       String?  @map("user_id")
+  user         User?    @relation(fields: [userId], references: [id])
+  action       String
+  resourceType String?  @map("resource_type")
+  resourceId   String?  @map("resource_id")
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  metadata     Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("audit_logs")
+}
+
+model FamilyMember {
+  id              String             @id @default(uuid())
+  userId          String             @map("user_id")
+  user            User               @relation("FamilyOwner", fields: [userId], references: [id], onDelete: Cascade)
+  memberUserId    String?            @map("member_user_id")
+  memberUser      User?              @relation("FamilyLinkedUser", fields: [memberUserId], references: [id])
+  relationship    FamilyRelationship
+  customLabel     String?            @map("custom_label")
+  fullName        String?            @map("full_name")
+  dateOfBirth     DateTime?          @map("date_of_birth")
+  gender          GenderType?
+  shareHereditary Boolean            @default(false) @map("share_hereditary")
+  shareConditions Boolean            @default(false) @map("share_conditions")
+  inviteStatus    FamilyInviteStatus @default(pending) @map("invite_status")
+  inviteToken     String             @default(uuid()) @map("invite_token")
+  inviteEmail     String?            @map("invite_email")
+  inviteExpiresAt DateTime           @default(dbgenerated("NOW() + INTERVAL '7 days'")) @map("invite_expires_at")
+  acceptedAt      DateTime?          @map("accepted_at")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  @@map("family_members")
+}
+
+model HealthRecord {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recordType   String   @map("record_type")
+  category     String?
+  title        String
+  labName      String?  @map("lab_name")
+  doctorName   String?  @map("doctor_name")
+  recordDate   DateTime @map("record_date")
+  s3Key        String?  @map("s3_key")
+  mongoDocId   String?  @map("mongo_doc_id")
+  ocrText      String?  @map("ocr_text")
+  resultStatus String   @default("pending") @map("result_status")
+  resultNotes  String?  @map("result_notes")
+  isShared     Boolean  @default(false) @map("is_shared")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  examResults  ExamResult[]
+
+  @@map("health_records")
+}
+
+model Appointment {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  doctorName    String   @map("doctor_name")
+  specialty     String?
+  cnesCode      String?  @map("cnes_code")
+  location      String?
+  appointmentAt DateTime @map("appointment_at")
+  notes         String?
+  reminderSent  Boolean  @default(false) @map("reminder_sent")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("appointments")
+}
+
+model Medication {
+  id                 String          @id @default(uuid())
+  userId             String          @map("user_id")
+  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name               String
+  dosage             String?
+  frequency          Json
+  startDate          DateTime        @map("start_date")
+  endDate            DateTime?       @map("end_date")
+  prescribingDoctor  String?         @map("prescribing_doctor")
+  notes              String?
+  isActive           Boolean         @default(true) @map("is_active")
+  lastPurchaseDate   DateTime?       @map("last_purchase_date")
+  totalPills         Int?            @map("total_pills")
+  remainingPills     Int?            @map("remaining_pills")
+  createdAt          DateTime        @default(now()) @map("created_at")
+  logs               MedicationLog[]
+
+  @@map("medications")
+}
+
+model MedicationLog {
+  id           String     @id @default(uuid())
+  medicationId String     @map("medication_id")
+  medication   Medication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+  userId       String     @map("user_id")
+  user         User       @relation(fields: [userId], references: [id])
+  scheduledAt  DateTime   @map("scheduled_at")
+  takenAt      DateTime?  @map("taken_at")
+  skipped      Boolean    @default(false)
+  skipReason   String?    @map("skip_reason")
+
+  @@map("medication_logs")
+}
+
+model MenstrualCycle {
+  id                 String               @id @default(uuid())
+  userId             String               @map("user_id")
+  user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cycleStart         DateTime             @map("cycle_start")
+  cycleEnd           DateTime?            @map("cycle_end")
+  cycleLength        Int?                 @map("cycle_length")
+  periodLength       Int?                 @map("period_length")
+  flowIntensity      Int?                 @map("flow_intensity")
+  symptoms           String[]
+  mood               String[]
+  notes              String?
+  currentPhase       String?              @map("current_phase")
+  nextCyclePredicted DateTime?            @map("next_cycle_predicted")
+  ovulationPredicted DateTime?            @map("ovulation_predicted")
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+
+  @@map("menstrual_cycles")
+}
+
+model MenstrualDailyLog {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  loggedDate    DateTime @map("logged_date")
+  flowIntensity Int?     @map("flow_intensity")
+  symptoms      String[]
+  mood          String[]
+  basalTemp     Decimal? @map("basal_temp")
+  cervicalMucus String?  @map("cervical_mucus")
+  notes         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, loggedDate])
+  @@map("menstrual_daily_logs")
+}
+
+model ShareToken {
+  id              String           @id @default(uuid())
+  userId          String           @map("user_id")
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token           String           @unique @default(uuid())
+  accessLevel     ShareAccessLevel @default(basic) @map("access_level")
+  customFields    String[]         @map("custom_fields")
+  expiresAt       DateTime         @map("expires_at")
+  accessedByName  String?          @map("accessed_by_name")
+  accessedAt      DateTime?        @map("accessed_at")
+  accessIp        String?          @map("access_ip")
+  revokedAt       DateTime?        @map("revoked_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+
+  @@map("share_tokens")
+}
+
+model AiHealthChat {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionDate    DateTime @default(now()) @map("session_date")
+  messages       Json     @default("[]")
+  healthSummary  Json?    @map("health_summary")
+  flags          String[]
+  sentimentScore Decimal? @map("sentiment_score")
+  completed      Boolean  @default(false)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, sessionDate])
+  @@map("ai_health_chats")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  channel   String
+  title     String
+  body      String?
+  metadata  Json?
+  sentAt    DateTime? @map("sent_at")
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@map("notifications")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v7 — Módulo de Interpretação de Exames de Sangue
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ExamResult {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  healthRecordId String?  @map("health_record_id")
+  healthRecord   HealthRecord? @relation(fields: [healthRecordId], references: [id])
+
+  examDate       DateTime @map("exam_date")
+  labName        String?  @map("lab_name")
+  doctorName     String?  @map("doctor_name")
+  examType       String   @map("exam_type")  // hemograma | bioquimica | hormonal | lipidograma | urina | outro
+
+  // Análise da IA
+  aiSummary      String?  @db.Text @map("ai_summary")
+  aiFlags        String[] @map("ai_flags")
+  aiRiskLevel    String   @default("normal") @map("ai_risk_level")  // normal | warning | critical
+  aiProcessedAt  DateTime? @map("ai_processed_at")
+
+  // Processamento
+  ocrRawText     String?  @db.Text @map("ocr_raw_text")
+  processingStatus String @default("pending") @map("processing_status")  // pending | processing | done | error
+
+  items          ExamResultItem[]
+
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, examDate])
+  @@map("exam_results")
+}
+
+model ExamResultItem {
+  id           String         @id @default(uuid())
+  examResultId String         @map("exam_result_id")
+  examResult   ExamResult     @relation(fields: [examResultId], references: [id], onDelete: Cascade)
+  userId       String         @map("user_id")
+
+  marker       String                   // "Hemoglobina", "Glicose", etc.
+  markerCode   String?        @map("marker_code")   // LOINC code quando disponível
+  unit         String?                              // "g/dL", "mg/dL"
+  value        Decimal
+  rawValue     String?        @map("raw_value")
+
+  // Referência aplicada (SBPC/ML ou do laboratório)
+  refMin       Decimal?       @map("ref_min")
+  refMax       Decimal?       @map("ref_max")
+  refSource    String?        @map("ref_source")  // "SBPC/ML" | "laboratorio"
+
+  // Status calculado
+  status       ExamItemStatus @default(pending)
+
+  // Variação em relação ao exame anterior
+  deltaPercent Decimal?       @map("delta_percent")
+  previousValue Decimal?      @map("previous_value")
+  previousExamDate DateTime?  @map("previous_exam_date")
+
+  // Desnormalizado para queries de timeline sem JOIN
+  examDate     DateTime       @map("exam_date")
+
+  createdAt    DateTime       @default(now()) @map("created_at")
+
+  @@index([userId, marker, examDate])
+  @@index([userId, examDate])
+  @@map("exam_result_items")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v7 — Módulo Vida (Lifestyle)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model LifestyleProfile {
+  id            String   @id @default(uuid())
+  userId        String   @unique @map("user_id")
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Biometria
+  heightCm      Decimal?  @map("height_cm")
+  weightKg      Decimal?  @map("weight_kg")
+  bmi           Decimal?  // calculado automaticamente
+  bmiCategory   String?   @map("bmi_category")  // underweight | normal | overweight | obese
+
+  // Tabagismo
+  smokingStatus  String   @default("never") @map("smoking_status")
+  // never | former | occasional | daily
+  cigarettesPerDay Int?   @map("cigarettes_per_day")
+  smokingYears   Int?     @map("smoking_years")
+  quitDate       DateTime? @map("quit_date")
+
+  // Álcool
+  alcoholStatus  String   @default("none") @map("alcohol_status")
+  // none | occasional | weekly | daily
+  drinksPerWeek  Int?     @map("drinks_per_week")
+  alcoholTypes   String[] @map("alcohol_types")
+
+  // Atividade física
+  exerciseFrequency   String?  @map("exercise_frequency")
+  // sedentary | 1-2x | 3-4x | 5+x (por semana)
+  exerciseTypes       String[] @map("exercise_types")
+  exerciseMinutes     Int?     @map("exercise_minutes_per_session")
+
+  // Sono
+  sleepHoursAvg  Decimal?  @map("sleep_hours_avg")
+  sleepQuality   Int?      @map("sleep_quality")   // 1–5
+
+  // Saúde emocional
+  stressLevel    Int?      @map("stress_level")    // 1–10
+  moodAvg        Int?      @map("mood_avg")         // 1–10
+  mentalHealthDiagnoses String[] @map("mental_health_diagnoses")
+  therapyFrequency String? @map("therapy_frequency")
+
+  // Saúde sexual
+  sexuallyActive Boolean?  @map("sexually_active")
+  contraceptionType String? @map("contraception_type")
+  stdProtection  Boolean?  @map("std_protection")
+
+  // Saúde ocupacional
+  workHoursPerWeek Int?    @map("work_hours_per_week")
+  workEnvironment  String? @map("work_environment")
+  // office | field | remote | industrial | other
+  ergonomicRisk    Int?    @map("ergonomic_risk")   // 1–5
+  occupationalChemicals Boolean? @map("occupational_chemicals")
+
+  // Biometria extra
+  waistCm          Decimal?  @map("waist_cm")      // circunferência abdominal
+  systolicBp       Int?      @map("systolic_bp")   // pressão sistólica mmHg
+  diastolicBp      Int?      @map("diastolic_bp")  // pressão diastólica mmHg
+
+  // Alimentação
+  dietType         String? @map("diet_type")
+  // omnivore | vegetarian | vegan | other
+  mealsPerDay      Int?    @map("meals_per_day")
+  waterLitersDay   Decimal? @map("water_liters_day")
+
+  // Score calculado pela IA
+  healthScore      Int?    @map("health_score")    // 0–100
+  healthScoreNotes String? @db.Text @map("health_score_notes")
+
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  snapshots      LifestyleSnapshot[]
+
+  @@map("lifestyle_profiles")
+}
+
+// Histórico de mudanças — fonte para BigData
+model LifestyleSnapshot {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profileId     String   @map("profile_id")
+  profile       LifestyleProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  snapshotDate  DateTime @default(now()) @map("snapshot_date")
+  data          Json     // snapshot completo do perfil
+
+  // Geolocalização para análise regional
+  cityName      String?  @map("city_name")
+  stateCode     String?  @map("state_code")
+  countryCode   String   @default("BR") @map("country_code")
+  ibgeCode      String?  @map("ibge_code")
+
+  // BMI do snapshot
+  bmi           Decimal?
+  healthScore   Int?     @map("health_score")
+
+  @@index([userId, snapshotDate])
+  @@index([stateCode, snapshotDate])
+  @@index([ibgeCode, snapshotDate])
+  @@map("lifestyle_snapshots")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Especialidade: Medicina do Trabalho
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum PsychosocialRiskTier {
+  baixo
+  moderado
+  alto
+  critico
+}
+enum WorkRegime          {
+  presencial
+  remoto
+  hibrido
+}
+enum EmploymentType      {
+  clt
+  pj
+  terceirizado
+  estagio
+  outro
+}
+
+model PsychosocialAssessment {
+  id              String               @id @default(uuid())
+  userId          String               @map("user_id")
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sector          String?
+  role            String?
+  workRegime      WorkRegime?          @map("work_regime")
+  employmentType  EmploymentType?      @map("employment_type")
+  weeklyOvertimeHours Int?             @map("weekly_overtime_hours")
+  answers         Json
+  answeredCount   Int                  @map("answered_count")
+  overallScore    Decimal              @map("overall_score")
+  overallTier     PsychosocialRiskTier @default(baixo) @map("overall_tier")
+  categoryScores  Json                 @map("category_scores")
+  topRisks        String[]
+  laudo           String?              @db.Text
+  recommendations String[]
+  consentGiven    Boolean              @default(false) @map("consent_given")
+  dataRetentionDays Int                @default(7300) @map("data_retention_days")
+  completedAt     DateTime?            @map("completed_at")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  @@map("psychosocial_assessments")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Especialidade: Oftalmologia
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum OphthalmologyExamStatus {
+  in_progress
+  completed
+  abandoned
+}
+enum RefractionRisk          {
+  none
+  low
+  moderate
+  high
+}
+
+model OphthalmologyExam {
+  id                     String                  @id @default(uuid())
+  userId                 String                  @map("user_id")
+  user                   User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status                 OphthalmologyExamStatus @default(in_progress)
+  estimatedDistanceCm    Int?                    @map("estimated_distance_cm")
+  deviceType             String?                 @map("device_type")
+  acuityRightEye         String?                 @map("acuity_right_eye")
+  acuityLeftEye          String?                 @map("acuity_left_eye")
+  snellenRightRaw        Json?                   @map("snellen_right_raw")
+  snellenLeftRaw         Json?                   @map("snellen_left_raw")
+  astigmatismRight       Boolean?                @map("astigmatism_right")
+  astigmatismLeft        Boolean?                @map("astigmatism_left")
+  astigmatismAxisRight   Int?                    @map("astigmatism_axis_right")
+  astigmatismAxisLeft    Int?                    @map("astigmatism_axis_left")
+  contrastScoreRight     Decimal?                @map("contrast_score_right")
+  contrastScoreLeft      Decimal?                @map("contrast_score_left")
+  estimatedMyopiaRight   Decimal?                @map("estimated_myopia_right")
+  estimatedMyopiaLeft    Decimal?                @map("estimated_myopia_left")
+  estimatedAstigRight    Decimal?                @map("estimated_astig_right")
+  estimatedAstigLeft     Decimal?                @map("estimated_astig_left")
+  estimatedHyperRight    Decimal?                @map("estimated_hyper_right")
+  estimatedHyperLeft     Decimal?                @map("estimated_hyper_left")
+  confidenceScore        Int?                    @map("confidence_score")
+  riskLevel              RefractionRisk          @default(none) @map("risk_level")
+  symptoms               String[]
+  userAge                Int?                    @map("user_age")
+  reportSummary          String?                 @map("report_summary")
+  recommendations        String[]
+  dataRetentionDays      Int                     @default(1825) @map("data_retention_days")
+  completedAt            DateTime?               @map("completed_at")
+  createdAt              DateTime                @default(now()) @map("created_at")
+  updatedAt              DateTime                @updatedAt @map("updated_at")
+
+  @@map("ophthalmology_exams")
+}
+
+model OphthalmologyHistory {
+  id             String    @id @default(uuid())
+  userId         String    @map("user_id")
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  examId         String?   @map("exam_id")
+  consultDate    DateTime? @map("consult_date")
+  doctorName     String?   @map("doctor_name")
+  crmNumber      String?   @map("crm_number")
+  sphericalRight Decimal?  @map("spherical_right")
+  sphericalLeft  Decimal?  @map("spherical_left")
+  cylinderRight  Decimal?  @map("cylinder_right")
+  cylinderLeft   Decimal?  @map("cylinder_left")
+  axisRight      Int?      @map("axis_right")
+  axisLeft       Int?      @map("axis_left")
+  additionRight  Decimal?  @map("addition_right")
+  additionLeft   Decimal?  @map("addition_left")
+  diagnoses      String[]
+  notes          String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  @@map("ophthalmology_history")
+}

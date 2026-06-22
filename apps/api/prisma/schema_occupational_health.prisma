@@ -1,0 +1,69 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// IcodLife — Especialidade: Medicina do Trabalho
+// Adicionar ao schema.prisma principal (User model + novos models)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Em User: adicionar relação
+// psychosocialAssessments   PsychosocialAssessment[]
+
+// ── ENUMS ─────────────────────────────────────────────────────────────────────
+
+enum PsychosocialRiskTier {
+  baixo
+  moderado
+  alto
+  critico
+}
+
+enum WorkRegime {
+  presencial
+  remoto
+  hibrido
+}
+
+enum EmploymentType {
+  clt
+  pj
+  terceirizado
+  estagio
+  outro
+}
+
+// ── MODELS ────────────────────────────────────────────────────────────────────
+
+model PsychosocialAssessment {
+  id              String               @id @default(uuid())
+  userId          String               @map("user_id")
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Contexto ocupacional declarado pelo usuário
+  sector          String?              @map("sector")           // setor / departamento
+  role            String?              @map("role")              // cargo / função
+  workRegime      WorkRegime?          @map("work_regime")
+  employmentType  EmploymentType?      @map("employment_type")
+  weeklyOvertimeHours Int?             @map("weekly_overtime_hours")
+
+  // Respostas brutas (escala Likert 0–4 por pergunta) — array de { questionId, value }
+  answers         Json                 @map("answers")
+  answeredCount   Int                  @map("answered_count")
+
+  // Resultado do motor de cálculo (NR-01 / COPSOQ-BR)
+  overallScore    Decimal              @map("overall_score")     // 0–100
+  overallTier     PsychosocialRiskTier @default(baixo) @map("overall_tier")
+  categoryScores  Json                 @map("category_scores")   // [{ category, label, score0to100, tier, nrReference }]
+  topRisks        String[]                                       // categorias em nível alto/crítico
+
+  // Laudo gerado (texto) e recomendações
+  laudo           String?              @db.Text
+  recommendations String[]
+
+  // LGPD — consentimento explícito para tratamento de dados sensíveis de saúde
+  consentGiven    Boolean              @default(false) @map("consent_given")
+  dataRetentionDays Int                @default(7300) @map("data_retention_days") // 20 anos — NR-01, retenção do PGR
+
+  completedAt     DateTime?            @map("completed_at")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  @@map("psychosocial_assessments")
+}

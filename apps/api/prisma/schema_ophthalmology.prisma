@@ -1,0 +1,110 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// IcodLife — Especialidade: Oftalmologia
+// Adicionar ao schema.prisma principal (User model + novos models)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Em User: adicionar relação
+// ophthalmologyExams   OphthalmologyExam[]
+
+// ── ENUMS ─────────────────────────────────────────────────────────────────────
+
+enum OphthalmologyExamStatus {
+  in_progress
+  completed
+  abandoned
+}
+
+enum RefractionRisk {
+  none          // 20/20 — sem alteração estimada
+  low           // leve suspeita
+  moderate      // alteração moderada estimada
+  high          // forte suspeita — encaminhar ao oftalmologista
+}
+
+// ── MODELS ────────────────────────────────────────────────────────────────────
+
+model OphthalmologyExam {
+  id                String                  @id @default(uuid())
+  userId            String                  @map("user_id")
+  user              User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status            OphthalmologyExamStatus @default(in_progress)
+
+  // Módulo 1 – Distância
+  estimatedDistanceCm Int?                  @map("estimated_distance_cm")
+  deviceType        String?                 @map("device_type")        // "mobile" | "desktop"
+
+  // Módulo 2 – Acuidade Visual (Snellen)
+  acuityRightEye    String?                 @map("acuity_right_eye")   // "20/20", "20/40" …
+  acuityLeftEye     String?                 @map("acuity_left_eye")
+  snellenRightRaw   Json?                   @map("snellen_right_raw")  // { row, correct, errors, timeMs }[]
+  snellenLeftRaw    Json?                   @map("snellen_left_raw")
+
+  // Módulo 3 – Astigmatismo
+  astigmatismRight  Boolean?                @map("astigmatism_right")
+  astigmatismLeft   Boolean?                @map("astigmatism_left")
+  astigmatismAxisRight Int?                 @map("astigmatism_axis_right")  // 0–180°
+  astigmatismAxisLeft  Int?                 @map("astigmatism_axis_left")
+
+  // Módulo 4 – Sensibilidade ao Contraste
+  contrastScoreRight Decimal?              @map("contrast_score_right") // 0–1
+  contrastScoreLeft  Decimal?              @map("contrast_score_left")
+
+  // Módulo 5 – Estimativa IA (cálculo local por regra; modelo externo futuro)
+  estimatedMyopiaRight   Decimal?          @map("estimated_myopia_right")    // dioptrias
+  estimatedMyopiaLeft    Decimal?          @map("estimated_myopia_left")
+  estimatedAstigRight    Decimal?          @map("estimated_astig_right")
+  estimatedAstigLeft     Decimal?          @map("estimated_astig_left")
+  estimatedHyperRight    Decimal?          @map("estimated_hyper_right")
+  estimatedHyperLeft     Decimal?          @map("estimated_hyper_left")
+  confidenceScore        Int?              @map("confidence_score")      // 0–100 %
+  riskLevel              RefractionRisk    @default(none) @map("risk_level")
+
+  // Sintomas declarados pelo usuário (pré-exame)
+  symptoms               String[]                                         // ["visao_turva","dor_de_cabeca",…]
+  userAge                Int?              @map("user_age")
+
+  // Resultado textual gerado pela IA
+  reportSummary          String?           @map("report_summary")
+  recommendations        String[]
+
+  // LGPD
+  dataRetentionDays      Int               @default(1825) @map("data_retention_days") // 5 anos CFM
+
+  completedAt            DateTime?         @map("completed_at")
+  createdAt              DateTime          @default(now()) @map("created_at")
+  updatedAt              DateTime          @updatedAt @map("updated_at")
+
+  @@map("ophthalmology_exams")
+}
+
+model OphthalmologyHistory {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  examId         String?  @map("exam_id")           // referência ao exame de auto-triagem
+
+  // Dados de consulta real (preenchidos pelo usuário após ir ao médico)
+  consultDate    DateTime? @map("consult_date")
+  doctorName     String?   @map("doctor_name")
+  crmNumber      String?   @map("crm_number")
+
+  // Grau real (pós-consulta)
+  sphericalRight   Decimal? @map("spherical_right")
+  sphericalLeft    Decimal? @map("spherical_left")
+  cylinderRight    Decimal? @map("cylinder_right")
+  cylinderLeft     Decimal? @map("cylinder_left")
+  axisRight        Int?     @map("axis_right")
+  axisLeft         Int?     @map("axis_left")
+  additionRight    Decimal? @map("addition_right")   // para presbiopia
+  additionLeft     Decimal? @map("addition_left")
+
+  // Diagnósticos confirmados pelo médico
+  diagnoses        String[]                          // ["miopia","astigmatismo","presbiopia"]
+  notes            String?
+
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@map("ophthalmology_history")
+}

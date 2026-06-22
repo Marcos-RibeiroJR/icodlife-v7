@@ -1,0 +1,160 @@
+version: "3.9"
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: icodlife_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: icodlife
+      POSTGRES_USER: icodlife
+      POSTGRES_PASSWORD: icodlife_dev_secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/docker/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U icodlife"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── MongoDB ─────────────────────────────────────────────────────────────────
+  mongodb:
+    image: mongo:7-jammy
+    container_name: icodlife_mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: icodlife
+      MONGO_INITDB_ROOT_PASSWORD: icodlife_dev_secret
+      MONGO_INITDB_DATABASE: icodlife
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  # ── TimescaleDB (PostgreSQL + extensão) ─────────────────────────────────────
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: icodlife_timescale
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: icodlife_metrics
+      POSTGRES_USER: icodlife
+      POSTGRES_PASSWORD: icodlife_dev_secret
+    ports:
+      - "5433:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: icodlife_redis
+    restart: unless-stopped
+    command: redis-server --requirepass icodlife_dev_secret --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "icodlife_dev_secret", "ping"]
+      interval: 10s
+
+  # ── MinIO (S3-compatible local) ─────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: icodlife_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: icodlife
+      MINIO_ROOT_PASSWORD: icodlife_dev_secret_key
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  # ── Keycloak (Auth / SSO) ────────────────────────────────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: icodlife_keycloak
+    restart: unless-stopped
+    command: start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/icodlife_keycloak
+      KC_DB_USERNAME: icodlife
+      KC_DB_PASSWORD: icodlife_dev_secret
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin123
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./infra/docker/keycloak-realm.json:/opt/keycloak/data/import/realm.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── API (NestJS) ─────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile.dev
+    container_name: icodlife_api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://icodlife:icodlife_dev_secret@postgres:5432/icodlife
+      MONGODB_URI: mongodb://icodlife:icodlife_dev_secret@mongodb:27017/icodlife
+      TIMESCALE_URL: postgresql://icodlife:icodlife_dev_secret@timescaledb:5432/icodlife_metrics
+      REDIS_URL: redis://:icodlife_dev_secret@redis:6379
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: icodlife
+      MINIO_SECRET_KEY: icodlife_dev_secret_key
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: icodlife
+      KEYCLOAK_CLIENT_ID: icodlife-api
+      JWT_SECRET: dev_jwt_secret_change_in_production
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./apps/api:/app
+      - /app/node_modules
+    depends_on:
+      - postgres
+      - mongodb
+      - redis
+      - keycloak
+
+  # ── Web (Next.js) ─────────────────────────────────────────────────────────────
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile.dev
+    container_name: icodlife_web
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+      NEXT_PUBLIC_KEYCLOAK_URL: http://localhost:8080
+      NEXT_PUBLIC_KEYCLOAK_REALM: icodlife
+      NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: icodlife-web
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  mongo_data:
+  timescale_data:
+  redis_data:
+  minio_data:
