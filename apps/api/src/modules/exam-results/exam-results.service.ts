@@ -22,6 +22,7 @@ export class ExamResultsService {
         doctorName: dto.doctorName,
         examType: dto.examType ?? 'outro',
         processingStatus: 'done',
+        aiFlags: [],
       },
     });
 

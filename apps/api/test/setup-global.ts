@@ -4,9 +4,25 @@
 
 import { execSync } from 'child_process';
 import * as path from 'path';
+import * as fs from 'fs';
 
 export default async function globalSetup() {
   const rootDir = path.join(__dirname, '..');
+
+  // Carrega .env manualmente (apps/api/.env)
+  const envPath = path.join(rootDir, '.env');
+  if (fs.existsSync(envPath)) {
+    const lines = fs.readFileSync(envPath, 'utf-8').split('\n');
+    for (const line of lines) {
+      const match = line.match(/^([^#=\s][^=]*)=(.*)$/);
+      if (match) {
+        const key = match[1].trim();
+        const val = match[2].trim().replace(/^["']|["']$/g, '');
+        if (!process.env[key]) process.env[key] = val;
+      }
+    }
+  }
+
   const dbUrl = process.env.DATABASE_URL;
 
   if (!dbUrl) {

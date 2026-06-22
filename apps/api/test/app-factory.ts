@@ -24,6 +24,12 @@ export async function createApp(): Promise<INestApplication> {
   }));
   app.setGlobalPrefix('api/v1', { exclude: ['health'] });
 
+  // Registra /health igual ao main.ts
+  const httpAdapter = app.getHttpAdapter();
+  httpAdapter.get('/health', (_req: any, res: any) => {
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
   await app.init();
   return app;
 }

@@ -44,15 +44,9 @@ describe('Auth (E2E)', () => {
         .expect(201);
 
       expect(res.body).toMatchObject({
-        user: expect.objectContaining({
-          email:    TEST_EMAIL,
-          fullName: 'Usuário Teste E2E',
-          gender:   'male',
-        }),
-        tokens: expect.objectContaining({
-          accessToken:  expect.any(String),
-          refreshToken: expect.any(String),
-        }),
+        message: expect.any(String),
+        userId:  expect.any(String),
+        icode:   expect.any(String),
       });
     });
 
@@ -100,11 +94,11 @@ describe('Auth (E2E)', () => {
         .expect(200);
 
       expect(res.body).toMatchObject({
-        user:   expect.objectContaining({ email: TEST_EMAIL }),
-        tokens: expect.objectContaining({ accessToken: expect.any(String) }),
+        user:        expect.objectContaining({ email: TEST_EMAIL }),
+        accessToken: expect.any(String),
       });
 
-      accessToken = res.body.tokens.accessToken;
+      accessToken = res.body.accessToken;
     });
 
     it('401 — senha incorreta', async () => {
@@ -133,23 +127,23 @@ describe('Auth (E2E)', () => {
   // ROTA PROTEGIDA — JWT Guard
   // ─────────────────────────────────────────────────────────────────────────────
   describe('Rotas protegidas (JwtAuthGuard)', () => {
-    it('401 — GET /users/profile sem token', async () => {
+    it('401 — GET /users/me sem token', async () => {
       await request(app.getHttpServer())
-        .get(`${BASE}/users/profile`)
+        .get(`${BASE}/users/me`)
         .expect(401);
     });
 
-    it('200 — GET /users/profile com token válido', async () => {
+    it('200 — GET /users/me com token válido', async () => {
       // Garante que temos token (pode ter falhado o login acima)
       if (!accessToken) {
         const res = await request(app.getHttpServer())
           .post(`${BASE}/auth/login`)
           .send({ email: TEST_EMAIL, password: TEST_PASS });
-        accessToken = res.body.tokens?.accessToken;
+        accessToken = res.body.accessToken;
       }
 
       const res = await request(app.getHttpServer())
-        .get(`${BASE}/users/profile`)
+        .get(`${BASE}/users/me`)
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
 
@@ -158,7 +152,7 @@ describe('Auth (E2E)', () => {
 
     it('401 — token malformado', async () => {
       await request(app.getHttpServer())
-        .get(`${BASE}/users/profile`)
+        .get(`${BASE}/users/me`)
         .set('Authorization', 'Bearer token.invalido.aqui')
         .expect(401);
     });

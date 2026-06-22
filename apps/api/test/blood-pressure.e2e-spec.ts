@@ -60,7 +60,7 @@ describe('Blood Pressure (E2E)', () => {
       .post(`${BASE}/auth/login`)
       .send({ email: TEST_USER.email, password: TEST_USER.password });
 
-    token = login.body.tokens?.accessToken;
+    token = login.body.accessToken;
     expect(token).toBeDefined();
   });
 
@@ -88,7 +88,7 @@ describe('Blood Pressure (E2E)', () => {
           .query({ systolic: s, diastolic: d })
           .expect(200);
 
-        expect(res.body.classification).toBe(expected);
+        expect(res.body.key).toBe(expected);
       });
     });
 
@@ -100,9 +100,8 @@ describe('Blood Pressure (E2E)', () => {
         .expect(200);
 
       expect(res.body).toMatchObject({
-        classification: expect.any(String),
-        systolic:       expect.any(Number),
-        diastolic:      expect.any(Number),
+        key:   expect.any(String),
+        label: expect.any(String),
       });
     });
   });

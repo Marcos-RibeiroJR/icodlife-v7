@@ -230,6 +230,7 @@ async function main() {
         aiRiskLevel:      exam.status === 'alert' ? 'warning' : 'normal',
         processingStatus: 'done',
         aiSummary:        exam.notes,
+        aiFlags:          [],
         items: {
           create: exam.items.map(item => ({
             userId:    joao.id,

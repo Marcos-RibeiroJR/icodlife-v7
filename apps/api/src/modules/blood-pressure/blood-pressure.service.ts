@@ -1,5 +1,5 @@
 // apps/api/src/modules/blood-pressure/blood-pressure.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateBpReadingDto } from './dto/create-bp-reading.dto';
 
@@ -143,6 +143,8 @@ export class BloodPressureService {
 
   // ── Deletar medição ────────────────────────────────────────────────────────
   async delete(userId: string, id: string) {
+    const existing = await this.prisma.bloodPressureReading.findFirst({ where: { id, userId } });
+    if (!existing) throw new NotFoundException('Medição não encontrada');
     await this.prisma.bloodPressureReading.deleteMany({ where: { id, userId } });
     return { message: 'Medição removida' };
   }
