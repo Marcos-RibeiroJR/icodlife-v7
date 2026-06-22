@@ -199,5 +199,5 @@ export class AuthService {
   async getConsents(userId: string) { return this.prisma.userConsent.findMany({ where: { userId }, orderBy: { acceptedAt: 'desc' } }); }
   async getSessions(userId: string) { return this.prisma.userSession.findMany({ where: { userId, expiresAt: { gt: new Date() } }, orderBy: { lastUsedAt: 'desc' } }); }
   async revokeSession(userId: string, sessionId: string) { await this.prisma.userSession.deleteMany({ where: { id: sessionId, userId } }); return { message: 'Sessão encerrada' }; }
-  private sanitize(u: any) { return { id: u.id, email: u.email, fullName: u.fullName, gender: u.gender, bloodType: u.bloodType, status: u.status, avatarUrl: u.avatarUrl, isDonor: u.isDonor, icode: u.icode ?? null }; }
+  private sanitize(u: any) { return { id: u.id, email: u.email, fullName: u.fullName, gender: u.gender, bloodType: u.bloodType, status: u.status, avatarUrl: u.avatarUrl, isDonor: u.isDonor, icode: u.icode ?? null, role: u.role ?? 'user' }; }
 }

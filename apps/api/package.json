@@ -8,6 +8,7 @@
     "start": "node dist/main",
     "db:migrate": "npx prisma migrate deploy",
     "db:seed": "npx ts-node prisma/seed.ts",
+    "db:seed:users": "npx ts-node prisma/seed-users.ts",
     "db:studio": "npx prisma studio",
     "test": "jest",
     "test:e2e": "jest --config ./test/jest-e2e.json --runInBand",
@@ -50,6 +51,7 @@
     "@types/bcrypt": "^5.0.2",
     "@types/jest": "^29.5.12",
     "@types/multer": "^2.0.0",
+    "@types/node": "^20.0.0",
     "@types/nodemailer": "^6.4.15",
     "@types/pdf-parse": "^1.1.4",
     "@types/qrcode": "^1.5.5",
@@ -60,5 +62,14 @@
     "ts-jest": "^29.4.11",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.0"
+  },
+  "jest": {
+    "moduleFileExtensions": ["js", "json", "ts"],
+    "rootDir": "src",
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": { "^.+\\.(t|j)s$": "ts-jest" },
+    "collectCoverageFrom": ["**/*.(t|j)s"],
+    "coverageDirectory": "../coverage",
+    "testEnvironment": "node"
   }
 }

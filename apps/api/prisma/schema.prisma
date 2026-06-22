@@ -219,6 +219,9 @@ model User {
   // Sprint 8 — Módulo Cirurgia
   surgeries             Surgery[]
 
+  // Sprint 10 — Módulo Vacinas
+  vaccinationRecords    VaccinationRecord[]
+
   @@map("users")
 }
 
@@ -792,88 +795,67 @@ model OphthalmologyHistory {
   @@map("ophthalmology_history")
 }
 
+// ────────────────────────────────────────────────────────────────────────────�
 // ─────────────────────────────────────────────────────────────────────────────
-// Mapa de Pressão Arterial — Sprint 5
-// ─────────────────────────────────────────────────────────────────────────────
-
-enum BpClassification {
-  normal
-  elevado
-  hipertensao1
-  hipertensao2
-  crise
-}
-
-enum SleepQuality {
-  boa
-  regular
-  ruim
-  insonia
-}
-
-enum PhysicalActivityBp {
-  nenhuma
-  leve
-  moderada
-  intensa
-}
-
-enum StressLevel {
-  baixo
-  moderado
-  alto
-}
-
-model BloodPressureReading {
-  id            String          @id @default(uuid())
-  userId        String          @map("user_id")
-  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  systolic      Int
-  diastolic     Int
-  pulse         Int?
-  measuredAt    DateTime        @map("measured_at")
-  arm           String?
-
-  classification BpClassification @default(normal)
-
-  sleepQuality      SleepQuality?      @map("sleep_quality")
-  alcoholConsumed   Boolean?           @default(false) @map("alcohol_consumed")
-  heavyMeal         Boolean?           @default(false) @map("heavy_meal")
-  highSodium        Boolean?           @default(false) @map("high_sodium")
-  physicalActivity  PhysicalActivityBp? @map("physical_activity")
-  stressLevel       StressLevel?       @map("stress_level")
-  caffeine          Boolean?           @default(false)
-  tookMedication    Boolean?           @default(false) @map("took_medication")
-  headache          Boolean?           @default(false)
-  dizziness         Boolean?           @default(false)
-  smoking           Boolean?           @default(false)
-  notes             String?            @db.Text
-
-  createdAt     DateTime         @default(now()) @map("created_at")
-  updatedAt     DateTime         @updatedAt @map("updated_at")
-
-  @@index([userId, measuredAt])
-  @@map("blood_pressure_readings")
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Sprint 6 — Módulo Doutor
+// Sprint 10 — Módulo Vacinas
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Contador por UF para gerar DR.XXXXX.UF sequencial
-model DoctorCounter {
-  id        Int    @id @default(autoincrement())
-  uf        String @unique
-  nextValue Int    @default(1) @map("next_value")
+// Catálogo público de vacinas (PNI + internacionais)
+model Vaccine {
+  id              String   @id @default(uuid())
+  name            String   // "Hepatite B"
+  tradeName       String?  @map("trade_name")   // "Engerix-B"
+  cvxCode         String?  @unique @map("cvx_code") // código CDC
+  diseases        String[] // doenças que previne
+  recommendedDoses Int     @default(1) @map("recommended_doses")
+  intervalDays    Int?     @map("interval_days")  // intervalo entre doses (dias)
+  boosterYears    Int?     @map("booster_years")  // reforço a cada N anos (null = dose única)
+  ageGroups       String[] @map("age_groups")     // ex: ["recém-nascido", "adulto"]
+  calendar        String   @default("PNI")        // PNI | Internacional | Recomendada
+  isActive        Boolean  @default(true) @map("is_active")
+  notes           String?  @db.Text
 
-  @@map("doctor_counter")
+  records         VaccinationRecord[]
+
+  @@map("vaccines")
 }
 
-model Doctor {
-  id            String    @id @default(uuid())
-  userId        String    @unique @map("user_id")
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+enum VaccinationStatus {
+  completed   // dose aplicada
+  scheduled   // agendada
+  skipped     // não tomou / contraindicada
+}
+
+// Registro individual de vacinação do usuário
+model VaccinationRecord {
+  id          String            @id @default(uuid())
+  userId      String            @map("user_id")
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  vaccineId   String            @map("vaccine_id")
+  vaccine     Vaccine           @relation(fields: [vaccineId], references: [id])
+
+  doseNumber  Int               @default(1) @map("dose_number")
+  status      VaccinationStatus @default(completed)
+  appliedAt   DateTime?         @map("applied_at")   // data de aplicação
+  scheduledAt DateTime?         @map("scheduled_at") // data agendada (futuro)
+
+  lotNumber   String?           @map("lot_number")
+  location    String?           // clínica / posto de saúde
+  professional String?          // nome do profissional
+  manufacturer String?          // fabricante (ex: "Pfizer", "Butantan")
+
+  nextDoseAt  DateTime?         @map("next_dose_at") // calculado: appliedAt + intervalDays
+  notes       String?           @db.Text
+
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  @@index([userId, vaccineId])
+  @@index([userId, appliedAt])
+  @@map("vaccination_records")
+}
+nDelete: Cascade)
 
   doctorId      String    @unique @map("doctor_id")   // ex: DR.00001.SP
   crm           String

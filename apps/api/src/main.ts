@@ -16,7 +16,10 @@ async function bootstrap() {
   app.enableCors({
     origin: [
       'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:3002',
       'https://app.icodlife.com.br',
+      'https://doutor.icodlife.com.br',
       'https://icodlife.com.br',
     ],
     credentials: true,

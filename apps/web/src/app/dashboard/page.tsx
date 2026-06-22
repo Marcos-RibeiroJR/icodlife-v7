@@ -333,6 +333,15 @@ export default function DashboardPage() {
               </div>
             </div>
           </Link>
+          <Link href="/vacinas">
+            <div className="card-hover p-4 flex items-center gap-3 cursor-pointer">
+              <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center text-xl flex-shrink-0">💉</div>
+              <div>
+                <div className="font-semibold text-slate-800 text-sm">Vacinas</div>
+                <div className="text-xs text-slate-400">Carteira digital PNI</div>
+              </div>
+            </div>
+          </Link>
         </div>
 
       </div>

@@ -26,6 +26,8 @@ import { MeusMedicosModule } from './modules/meus-medicos/meus-medicos.module';
 import { ProntuarioModule } from './modules/prontuario/prontuario.module';
 // Sprint 8 — Módulo Cirurgia
 import { SurgeryModule } from './modules/surgery/surgery.module';
+// Sprint 10 — Módulo Vacinas
+import { VaccinesModule } from './modules/vaccines/vaccines.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { RedisModule } from './common/redis/redis.module';
 import { AuditModule } from './common/audit/audit.module';
@@ -61,6 +63,8 @@ import { AuditModule } from './common/audit/audit.module';
     ProntuarioModule,
     // ── Sprint 8 — Cirurgia ────────────────────────────────────────
     SurgeryModule,
+    // ── Sprint 10 — Vacinas ────────────────────────────────────────
+    VaccinesModule,
   ],
 })
 export class AppModule {}
