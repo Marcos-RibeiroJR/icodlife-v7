@@ -1,6 +1,5 @@
 // apps/api/src/modules/ai-chat/ai-chat.service.ts
-// Chatbot de saúde periódico — mobile-first
-// Motor: OpenAI GPT-4o com contexto de saúde do usuário
+// HealthBot — check-in diário com contexto completo de saúde
 
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -12,7 +11,6 @@ export interface ChatMessage {
   timestamp: string;
 }
 
-// Perguntas periódicas de saúde por categoria
 const DAILY_HEALTH_QUESTIONS = {
   sleep: [
     'Como foi o seu sono esta noite? Dormiu bem? 😴',
@@ -52,12 +50,11 @@ const DAILY_HEALTH_QUESTIONS = {
   ],
 };
 
-// Perguntas específicas para usuárias femininas
 const FEMALE_QUESTIONS = {
   cycle: [
     'Você está em período menstrual atualmente?',
     'Sentiu cólicas ou desconforto relacionado ao ciclo?',
-    'Notou alguma alteração no ciclo menstrual?',
+    'Notou alguma alteração no ciclo menstrual recentemente?',
   ],
 };
 
@@ -74,7 +71,6 @@ export class AiChatService {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Verificar se já tem sessão hoje
     let session = await this.prisma.aiHealthChat.findFirst({
       where: { userId, sessionDate: { gte: today } },
     });
@@ -83,13 +79,11 @@ export class AiChatService {
       return { alreadyCompleted: true, session };
     }
 
-    // Buscar perfil do usuário
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { fullName: true, gender: true, chronicConditions: true, allergies: true },
     });
 
-    // Primeira mensagem do chatbot
     const firstName = user!.fullName.split(' ')[0];
     const greeting = this.buildGreeting(firstName);
 
@@ -122,47 +116,34 @@ export class AiChatService {
       session = newSession;
     }
 
-    const [user, recentBp] = await Promise.all([
+    const [user, recentBp, cycleStats] = await Promise.all([
       this.prisma.user.findUnique({
         where: { id: userId },
         select: { fullName: true, gender: true, chronicConditions: true },
       }),
-      // Últimas 3 medições de PA para contexto
       (this.prisma as any).bloodPressureReading?.findMany({
         where: { userId, measuredAt: { gte: new Date(Date.now() - 7 * 86_400_000) } },
         orderBy: { measuredAt: 'desc' },
         take: 3,
       }).catch(() => []),
+      // Buscar fase atual do ciclo para usuárias femininas
+      this.getMenstrualContext(userId),
     ]);
 
     const messages = (session.messages as unknown as ChatMessage[]) || [];
 
-    // Adicionar mensagem do usuário
-    const userMsg: ChatMessage = {
-      role: 'user',
-      content: userMessage,
-      timestamp: new Date().toISOString(),
-    };
+    const userMsg: ChatMessage = { role: 'user', content: userMessage, timestamp: new Date().toISOString() };
     messages.push(userMsg);
 
-    // Gerar resposta da IA (com contexto BP)
     const aiResponse = await this.generateAiResponse(
       messages,
-      { ...user!, recentBp: recentBp ?? [] },
-      session
+      { ...user!, recentBp: recentBp ?? [], cycleStats },
+      session,
     );
 
-    const aiMsg: ChatMessage = {
-      role: 'assistant',
-      content: aiResponse.message,
-      timestamp: new Date().toISOString(),
-    };
+    const aiMsg: ChatMessage = { role: 'assistant', content: aiResponse.message, timestamp: new Date().toISOString() };
     messages.push(aiMsg);
 
-    // Verificar se a sessão está completa
-    const completed = aiResponse.sessionComplete;
-
-    // Atualizar sessão
     const updated = await this.prisma.aiHealthChat.update({
       where: { id: session.id },
       data: {
@@ -170,31 +151,58 @@ export class AiChatService {
         healthSummary: aiResponse.healthSummary as any,
         flags: aiResponse.flags,
         sentimentScore: aiResponse.sentimentScore,
-        completed,
+        completed: aiResponse.sessionComplete,
       },
     });
 
     return {
       message: aiResponse.message,
-      sessionComplete: completed,
+      sessionComplete: aiResponse.sessionComplete,
       flags: aiResponse.flags,
       session: updated,
     };
   }
 
-  // ── GERAR RESPOSTA COM IA ─────────────────────────────────────────────────
+  // ── CONTEXTO MENSTRUAL ────────────────────────────────────────────────────
 
-  private async generateAiResponse(
-    messages: ChatMessage[],
-    user: any,
-    session: any,
-  ) {
-    const systemPrompt = this.buildSystemPrompt(user);
+  private async getMenstrualContext(userId: string): Promise<any> {
+    try {
+      const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { gender: true } });
+      if (!user || !['female', 'other'].includes(user.gender)) return null;
 
-    // Determinar próxima pergunta baseado no progresso
+      const lastCycle = await this.prisma.menstrualCycle.findFirst({
+        where: { userId },
+        orderBy: { cycleStart: 'desc' },
+      });
+      if (!lastCycle) return null;
+
+      const dayOfCycle = Math.round((Date.now() - new Date(lastCycle.cycleStart).getTime()) / (1000 * 60 * 60 * 24));
+      const cycleLen = lastCycle.cycleLength || 28;
+      const ovDay = Math.round(cycleLen / 2) - 1;
+
+      let phase: string;
+      if (dayOfCycle < (lastCycle.periodLength || 5)) phase = 'menstrual';
+      else if (dayOfCycle < ovDay - 1) phase = 'folicular';
+      else if (dayOfCycle <= ovDay + 1) phase = 'ovulação';
+      else phase = 'lútea';
+
+      const nextPredicted = lastCycle.nextCyclePredicted;
+      const daysUntilNext = nextPredicted
+        ? Math.round((new Date(nextPredicted).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+        : null;
+
+      return { phase, dayOfCycle, daysUntilNext, cycleLen };
+    } catch {
+      return null;
+    }
+  }
+
+  // ── GERAR RESPOSTA ────────────────────────────────────────────────────────
+
+  private async generateAiResponse(messages: ChatMessage[], user: any, session: any) {
     const questionCount = messages.filter(m => m.role === 'assistant').length;
     const categories = Object.keys(DAILY_HEALTH_QUESTIONS);
-    const femaleCategories = user.gender === 'female' ? Object.keys(FEMALE_QUESTIONS) : [];
+    const femaleCategories = ['female', 'other'].includes(user.gender) ? Object.keys(FEMALE_QUESTIONS) : [];
     const allCategories = [...categories, ...femaleCategories];
 
     let nextMessage: string;
@@ -204,7 +212,6 @@ export class AiChatService {
     let sentimentScore = 0;
 
     if (questionCount >= allCategories.length + 1) {
-      // Sessão completa — gerar resumo
       sessionComplete = true;
       const analysis = await this.analyzeHealthData(messages, user);
       nextMessage = analysis.summary;
@@ -212,17 +219,20 @@ export class AiChatService {
       flags = analysis.flags;
       sentimentScore = analysis.sentimentScore;
     } else {
-      // Próxima pergunta
       const categoryIndex = Math.min(questionCount, allCategories.length - 1);
       const category = allCategories[categoryIndex];
-
       const questionsForCategory = category in FEMALE_QUESTIONS
         ? (FEMALE_QUESTIONS as any)[category]
         : (DAILY_HEALTH_QUESTIONS as any)[category];
 
       nextMessage = questionsForCategory[0];
 
-      // Personalizar baseado na última resposta
+      // Inserir contexto de ciclo na pergunta de ciclo
+      if (category === 'cycle' && user.cycleStats) {
+        const { phase, daysUntilNext } = user.cycleStats;
+        nextMessage = `Estou vendo que você está na fase ${phase} do ciclo${daysUntilNext !== null ? ` (próximo ciclo em ~${daysUntilNext} dias)` : ''}. ${questionsForCategory[0]}`;
+      }
+
       const lastUserMsg = messages.filter(m => m.role === 'user').pop();
       if (lastUserMsg) {
         nextMessage = this.personalizeQuestion(nextMessage, lastUserMsg.content, user);
@@ -232,31 +242,30 @@ export class AiChatService {
     return { message: nextMessage, sessionComplete, healthSummary, flags, sentimentScore };
   }
 
-  // ── ANÁLISE FINAL DA SESSÃO ───────────────────────────────────────────────
+  // ── ANÁLISE FINAL ─────────────────────────────────────────────────────────
 
   private async analyzeHealthData(messages: ChatMessage[], user: any) {
     const userMessages = messages.filter(m => m.role === 'user').map(m => m.content);
-
-    // Análise simples de palavras-chave (substituir por OpenAI em produção)
-    const negativeKeywords = ['dor', 'ruim', 'cansado', 'fraco', 'mal', 'tontura', 'febre', 'vômito'];
-    const positiveKeywords = ['bem', 'ótimo', 'excelente', 'descansado', 'disposto'];
-
     const text = userMessages.join(' ').toLowerCase();
+
+    const negativeKeywords = ['dor', 'ruim', 'cansado', 'fraco', 'mal', 'tontura', 'febre', 'vômito'];
+    const positiveKeywords = ['bem', 'ótimo', 'excelente', 'descansado', 'disposto', 'energia'];
     const negCount = negativeKeywords.filter(k => text.includes(k)).length;
     const posCount = positiveKeywords.filter(k => text.includes(k)).length;
     const sentimentScore = Math.max(-1, Math.min(1, (posCount - negCount) / 5));
 
     const flags: string[] = [];
-    if (text.includes('febre') || text.includes('vômito')) flags.push('possible_illness');
-    if (text.includes('dor intensa') || text.includes('dor forte')) flags.push('severe_pain');
-    if (text.includes('não dormi') || text.includes('insônia')) flags.push('sleep_issue');
+    if (/febre|vômito|vomit/.test(text)) flags.push('possible_illness');
+    if (/dor intensa|dor forte|dor 8|dor 9|dor 10/.test(text)) flags.push('severe_pain');
+    if (/não dormi|dormi mal|insônia|acordei várias/.test(text)) flags.push('sleep_issue');
+    if (/não tomei|esqueci o remédio|esqueci a medicação/.test(text)) flags.push('missed_medication');
 
-    // ── Detecção de fatores de PA na conversa ───────────────────────────────
-    const drankAlcohol = /álcool|cerveja|vinho|bebida|drink/i.test(text);
+    // Fatores de PA
+    const drankAlcohol = /álcool|cerveja|vinho|bebida alcoolica|drink/i.test(text);
     const hadHeavyMeal = /churrasco|fritura|salgado|gorduroso|pizza|hamburguer/i.test(text);
     const hadPoorSleep = /não dormi|dormi mal|insônia|acordei|pesadelo/i.test(text);
-    const hadHighStress= /estressad|ansios|nervos|pressão no trabalho|preocupad/i.test(text);
-    const hadCaffeine  = /café|energético|cafeína/i.test(text);
+    const hadHighStress = /estressad|ansios|nervos|pressão no trabalho|preocupad/i.test(text);
+    const hadCaffeine   = /café|energético|cafeína/i.test(text);
     const headacheOrDizz = /dor de cabeça|cefaleia|tontura|cabeça doend/i.test(text);
 
     const bpFactors: string[] = [];
@@ -265,64 +274,76 @@ export class AiChatService {
     if (hadPoorSleep)  bpFactors.push('😴 Sono insuficiente');
     if (hadHighStress) bpFactors.push('😰 Estresse elevado');
     if (hadCaffeine)   bpFactors.push('☕ Excesso de cafeína');
-
     if (bpFactors.length > 0) flags.push('bp_risk_factors');
     if (headacheOrDizz) flags.push('bp_symptom');
 
     const firstName = user.fullName.split(' ')[0];
-    const summaryParts = [`Olá ${firstName}! Aqui está um resumo da sua saúde hoje:`];
+    const parts: string[] = [`${firstName}, aqui está o resumo do seu check-in de hoje:`];
 
     if (sentimentScore > 0.3) {
-      summaryParts.push('Você parece estar bem hoje! Continue assim. 💪');
+      parts.push('\n✅ Você parece estar bem hoje! Continue assim. 💪');
     } else if (sentimentScore < -0.3) {
-      summaryParts.push('Parece que não foi um dia tão fácil. Descanse bem e se precisar, consulte um médico. ❤️');
+      parts.push('\n💛 Não parece ter sido um dia fácil. Descanse bem. Se persistir, consulte um médico.');
     } else {
-      summaryParts.push('Dia dentro da normalidade. Registrei suas informações de saúde. 📊');
+      parts.push('\n📊 Dia dentro da normalidade. Informações registradas.');
     }
 
-    if (flags.length > 0) {
-      summaryParts.push('\n⚠️ Pontos de atenção identificados:');
-      if (flags.includes('possible_illness')) summaryParts.push('• Sintomas que podem indicar mal-estar. Fique de olho!');
-      if (flags.includes('severe_pain')) summaryParts.push('• Dor intensa relatada. Recomendamos avaliação médica.');
-      if (flags.includes('sleep_issue') || hadPoorSleep) summaryParts.push('• Sono ruim detectado — isso pode elevar a pressão arterial.');
-    }
+    if (flags.includes('possible_illness')) parts.push('⚠️ Sintomas que podem indicar mal-estar — fique atento.');
+    if (flags.includes('severe_pain'))      parts.push('🔴 Dor intensa relatada — recomendamos avaliação médica.');
+    if (flags.includes('sleep_issue'))      parts.push('😴 Sono insuficiente detectado — isso pode elevar a pressão arterial.');
+    if (flags.includes('missed_medication')) parts.push('💊 Medicação não tomada — tente manter a regularidade.');
 
-    // ── Insight de pressão arterial ────────────────────────────────────────
     if (bpFactors.length > 0) {
-      summaryParts.push(`\n❤️ Fatores identificados que podem influenciar sua pressão arterial:`);
-      bpFactors.forEach(f => summaryParts.push(`   ${f}`));
-      summaryParts.push('👉 Recomendo registrar sua pressão no Mapa de PA do IcodLife para acompanhar o impacto desses fatores.');
+      parts.push('\n❤️ Fatores que podem influenciar sua pressão arterial hoje:');
+      bpFactors.forEach(f => parts.push(`   ${f}`));
+      parts.push('👉 Registre sua PA no Mapa de Pressão para acompanhar o impacto.');
     }
 
     if (headacheOrDizz) {
-      summaryParts.push('\n🩺 Você mencionou dor de cabeça ou tontura — esses sintomas podem estar relacionados à pressão arterial. Considere aferir sua PA agora e registrar no Mapa de PA.');
+      parts.push('\n🩺 Dor de cabeça/tontura podem estar relacionadas à PA. Considere aferir agora.');
     }
 
     if (user.recentBp?.length) {
       const last = user.recentBp[0];
-      if (last.classification === 'hipertensao2' || last.classification === 'crise') {
-        summaryParts.push(`\n🔴 Lembrete: sua última medição de PA foi ${last.systolic}/${last.diastolic} mmHg (${last.classification}). Monitoramento frequente é importante.`);
+      if (last.classification === 'crise') {
+        parts.push(`\n🔴 ATENÇÃO: última PA foi ${last.systolic}/${last.diastolic} (CRISE). Procure atendimento médico imediatamente.`);
+      } else if (last.classification === 'hipertensao2') {
+        parts.push(`\n🟠 Sua última PA (${last.systolic}/${last.diastolic}) foi Hipertensão G2. Monitoramento diário importante.`);
       } else if (last.classification === 'hipertensao1') {
-        summaryParts.push(`\n🟠 Sua PA recente (${last.systolic}/${last.diastolic}) está no limiar — os fatores do dia de hoje podem influenciar. Fique atento.`);
+        parts.push(`\n🟡 PA recente (${last.systolic}/${last.diastolic}) em limiar hipertensivo — fatores do dia podem influenciar.`);
       }
     }
 
-    summaryParts.push('\nSuas informações foram salvas no seu prontuário IcodLife. Até amanhã! 🌟');
+    // Contexto de ciclo menstrual
+    if (user.cycleStats) {
+      const { phase } = user.cycleStats;
+      const phaseAdvice: Record<string, string> = {
+        menstrual: '🩸 Você está na fase menstrual — hidratar-se bem e descansar ajudam a reduzir cólicas.',
+        folicular: '🌱 Fase folicular — boa energia! Aproveite para atividades físicas.',
+        ovulação: '🌸 Período de ovulação — pico de energia e disposição.',
+        lútea: '🌙 Fase lútea — possível TPM. Reduza sódio e cafeína para controlar retenção.',
+      };
+      if (phaseAdvice[phase]) parts.push(`\n${phaseAdvice[phase]}`);
+    }
+
+    parts.push('\nRegistros salvos no seu prontuário IcodLife. Até amanhã! 🌟');
 
     return {
-      summary: summaryParts.join('\n'),
-      structured: { sentimentScore, flags, messageCount: userMessages.length },
+      summary: parts.join('\n'),
+      structured: { sentimentScore, flags, messageCount: userMessages.length, bpFactors },
       flags,
       sentimentScore,
     };
   }
+
+  // ── HELPERS ───────────────────────────────────────────────────────────────
 
   private buildGreeting(firstName: string): ChatMessage {
     const hour = new Date().getHours();
     const period = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
     return {
       role: 'assistant',
-      content: `${period}, ${firstName}! 👋 Sou o HealthBot do IcodLife e estou aqui para um check-in rápido de saúde com você. Vamos começar?\n\nComo foi o seu sono esta noite? Dormiu bem?`,
+      content: `${period}, ${firstName}! 👋 Sou o HealthBot do IcodLife. Vamos fazer um check-in rápido de saúde?\n\nComo foi o seu sono esta noite? Dormiu bem? 😴`,
       timestamp: new Date().toISOString(),
     };
   }
@@ -331,56 +352,47 @@ export class AiChatService {
     let bpContext = '';
     if (user.recentBp?.length) {
       const last = user.recentBp[0];
-      bpContext = `\nÚltima pressão arterial registrada: ${last.systolic}/${last.diastolic} mmHg (${last.classification}) em ${new Date(last.measuredAt).toLocaleDateString('pt-BR')}.`;
+      bpContext = `\nÚltima PA: ${last.systolic}/${last.diastolic} mmHg (${last.classification}) em ${new Date(last.measuredAt).toLocaleDateString('pt-BR')}.`;
       if (user.recentBp.length >= 2) {
         const avg = Math.round(user.recentBp.reduce((s: number, r: any) => s + r.systolic, 0) / user.recentBp.length);
-        bpContext += ` Média sistólica recente: ${avg} mmHg.`;
+        bpContext += ` Média sistólica: ${avg} mmHg.`;
       }
     }
-
-    return `Você é o HealthBot do IcodLife, um assistente de saúde empático e profissional.
-
+    let cycleContext = '';
+    if (user.cycleStats) {
+      cycleContext = `\nFase do ciclo menstrual: ${user.cycleStats.phase} (dia ${user.cycleStats.dayOfCycle}).`;
+    }
+    return `Você é o HealthBot do IcodLife, assistente de saúde empático e profissional.
 Usuário: ${user.fullName}, gênero: ${user.gender}
-Condições conhecidas: ${user.chronicConditions?.join(', ') || 'nenhuma'}${bpContext}
+Condições crônicas: ${user.chronicConditions?.join(', ') || 'nenhuma'}${bpContext}${cycleContext}
 
 Regras:
-- Faça UMA pergunta por vez, de forma natural e empática
-- Use linguagem simples e acolhedora em português brasileiro
+- Uma pergunta por vez, linguagem simples e acolhedora em português brasileiro
 - NUNCA faça diagnósticos médicos
-- Se detectar sintomas graves, recomende buscar atendimento médico
-- Registre informações de forma estruturada para o prontuário
-- Para usuárias femininas, inclua perguntas sobre saúde feminina quando relevante
-- Se o usuário mencionar sono ruim, álcool, estresse ou refeição pesada, mencione o impacto potencial na pressão arterial
-- Se a pressão recente estiver elevada (≥130/80), personalize as perguntas sobre fatores de risco`;
+- Sintomas graves → recomende atendimento médico
+- Sono ruim, álcool, estresse, refeição pesada → mencione impacto na PA
+- PA elevada recente → personalize perguntas sobre fatores de risco
+- Para usuárias femininas, relacione sintomas com fase do ciclo quando relevante`;
   }
 
   private personalizeQuestion(question: string, lastResponse: string, user: any): string {
-    // Adicionar empatia baseada na última resposta
-    const negative = ['ruim', 'mal', 'dor', 'cansado', 'não'];
+    const negative = ['ruim', 'mal', 'dor', 'cansado', 'não', 'péssimo'];
     const hasNegative = negative.some(n => lastResponse.toLowerCase().includes(n));
-
-    if (hasNegative) {
-      return `Entendo, obrigado por me contar isso. ${question}`;
-    }
+    if (hasNegative) return `Entendo, obrigado por compartilhar. ${question}`;
     return question;
   }
 
-  // ── HISTÓRICO DE SESSÕES ──────────────────────────────────────────────────
+  // ── HISTÓRICO ─────────────────────────────────────────────────────────────
 
-  async getChatHistory(userId: string, days = 7) {
+  async getChatHistory(userId: string, days = 14) {
     const since = new Date();
     since.setDate(since.getDate() - days);
-
     return this.prisma.aiHealthChat.findMany({
       where: { userId, sessionDate: { gte: since } },
       orderBy: { sessionDate: 'desc' },
       select: {
-        id: true,
-        sessionDate: true,
-        completed: true,
-        flags: true,
-        sentimentScore: true,
-        healthSummary: true,
+        id: true, sessionDate: true, completed: true,
+        flags: true, sentimentScore: true, healthSummary: true,
       },
     });
   }
