@@ -319,19 +319,50 @@ model HealthRecord {
   @@map("health_records")
 }
 
-model Appointment {
-  id            String   @id @default(uuid())
-  userId        String   @map("user_id")
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  doctorName    String   @map("doctor_name")
-  specialty     String?
-  cnesCode      String?  @map("cnes_code")
-  location      String?
-  appointmentAt DateTime @map("appointment_at")
-  notes         String?
-  reminderSent  Boolean  @default(false) @map("reminder_sent")
-  createdAt     DateTime @default(now()) @map("created_at")
+enum AppointmentStatus {
+  scheduled
+  completed
+  canceled
+  no_show
+}
 
+model Appointment {
+  id            String            @id @default(uuid())
+  userId        String            @map("user_id")
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Dados da consulta
+  doctorName    String            @map("doctor_name")
+  specialty     String?
+  cnesCode      String?           @map("cnes_code")
+  appointmentAt DateTime          @map("appointment_at")
+  duration      Int               @default(30)         // minutos
+  status        AppointmentStatus @default(scheduled)
+
+  // Local / Telehealth
+  telehealth    Boolean           @default(false)
+  location      String?                              // clínica/hospital
+  address       String?                              // endereço completo
+  meetingUrl    String?           @map("meeting_url") // link da videochamada
+
+  // Link com médico cadastrado no IcodLife (opcional)
+  patientDoctorId String?         @map("patient_doctor_id")
+  patientDoctor   PatientDoctor?  @relation(fields: [patientDoctorId], references: [id])
+
+  // Lembrete
+  reminderMinutes Int?            @map("reminder_minutes") // 15, 30, 60, 1440 (1 dia)
+  reminderSent    Boolean         @default(false) @map("reminder_sent")
+  reminderAt      DateTime?       @map("reminder_at")
+
+  // Exibição no calendário
+  color         String?           @default("#DC2626") // hex
+
+  notes         String?           @db.Text
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  @@index([userId, appointmentAt])
+  @@index([userId, status])
   @@map("appointments")
 }
 
@@ -894,6 +925,8 @@ model PatientDoctor {
 
   createdAt    DateTime            @default(now()) @map("created_at")
   updatedAt    DateTime            @updatedAt @map("updated_at")
+
+  appointments Appointment[]
 
   @@unique([userId, doctorId])
   @@map("patient_doctors")
