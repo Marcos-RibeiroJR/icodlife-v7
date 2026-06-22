@@ -66,8 +66,10 @@ enum ConsentType {
 
 enum ShareAccessLevel {
   basic
-  full
-  custom
+  medium
+  complete
+  full      // legado
+  custom    // legado
 }
 
 enum UserRole {
@@ -408,6 +410,9 @@ model ShareToken {
   accessLevel     ShareAccessLevel @default(basic) @map("access_level")
   customFields    String[]         @map("custom_fields")
   expiresAt       DateTime         @map("expires_at")
+  // Controle de acesso
+  viewCount       Int              @default(0) @map("view_count")
+  maxViews        Int?             @map("max_views")
   accessedByName  String?          @map("accessed_by_name")
   accessedAt      DateTime?        @map("accessed_at")
   accessIp        String?          @map("access_ip")
