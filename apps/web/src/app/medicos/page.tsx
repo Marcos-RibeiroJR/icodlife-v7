@@ -208,44 +208,24 @@ export default function MedicosPage() {
             </select>
           </div>
           {(specialty !== 'Todos' || uf !== 'Todos' || plan !== 'Todos' || name) && (
-            <button onClick={resetFilters} className="mt-3 text-xs text-slate-500 hover:text-red-600 underline">
+            <button onClick={resetFilters} className="text-xs text-slate-500 hover:text-red-600 underline mt-1">
               Limpar filtros
             </button>
           )}
         </div>
 
-        {/* Contador */}
-        <p className="text-sm text-slate-500 mb-4">
-          {loading ? 'Buscando médicos...' : `${filtered.length} médico(s) encontrado(s)`}
-        </p>
-
+        {/* Resultado */}
         {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="bg-white border border-slate-100 rounded-2xl p-4 animate-pulse">
-                <div className="flex gap-3 mb-3">
-                  <div className="w-12 h-12 bg-slate-200 rounded-full" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-4 bg-slate-200 rounded w-3/4" />
-                    <div className="h-3 bg-slate-200 rounded w-1/2" />
-                  </div>
-                </div>
-                <div className="h-3 bg-slate-200 rounded mb-2" />
-                <div className="h-3 bg-slate-200 rounded w-2/3" />
-              </div>
-            ))}
-          </div>
+          <div className="text-center py-16 text-slate-400">Carregando médicos...</div>
         ) : filtered.length === 0 ? (
-          <div className="bg-white border border-slate-100 rounded-2xl p-12 text-center">
-            <div className="text-4xl mb-3">🔍</div>
-            <p className="text-slate-500">Nenhum médico encontrado com esses filtros.</p>
-            <button onClick={resetFilters} className="mt-3 text-sm text-red-600 underline">Limpar filtros</button>
+          <div className="text-center py-16 text-slate-400">
+            <div className="text-5xl mb-4">🩺</div>
+            <p className="font-medium">Nenhum médico encontrado</p>
+            <p className="text-sm mt-1">Tente outros filtros</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map(doc => (
-              <DoctorCard key={doc.id} doctor={doc} />
-            ))}
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filtered.map(d => <DoctorCard key={d.id} doctor={d} />)}
           </div>
         )}
       </div>
@@ -254,97 +234,71 @@ export default function MedicosPage() {
   );
 }
 
-function DoctorCard({ doctor }: { doctor: Doctor }) {
-  const [linked,  setLinked]  = useState(false);
-  const [linking, setLinking] = useState(false);
+// ── DoctorCard ───────────────────────────────────────────────────────────────
 
-  const initial = doctor.user.fullName?.[0]?.toUpperCase() ?? '?';
-  const colors  = ['bg-red-100 text-red-700','bg-blue-100 text-blue-700','bg-purple-100 text-purple-700',
-                   'bg-green-100 text-green-700','bg-amber-100 text-amber-700','bg-teal-100 text-teal-700'];
-  const colorIdx = doctor.id.charCodeAt(doctor.id.length - 1) % colors.length;
+function DoctorCard({ doctor: d }: { doctor: any }) {
+  const initials = (d.user.fullName ?? 'D')
+    .split(' ').filter(Boolean).slice(0, 2)
+    .map((w: string) => w[0].toUpperCase()).join('');
 
-  const handleLink = async () => {
-    setLinking(true);
-    try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('icodlife_token') : null;
-      if (!token) { alert('Faça login para vincular um médico'); return; }
-      await axios.post(`${API}/meus-medicos`,
-        { doctorId: doctor.doctorId },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setLinked(true);
-    } catch (e: any) {
-      const msg = e.response?.data?.message;
-      if (typeof msg === 'string' && msg.toLowerCase().includes('já')) { setLinked(true); return; }
-      alert(typeof msg === 'string' ? msg : 'Erro ao vincular médico');
-    } finally {
-      setLinking(false);
-    }
-  };
+  const colors = ['bg-red-100 text-red-700','bg-blue-100 text-blue-700','bg-green-100 text-green-700',
+    'bg-purple-100 text-purple-700','bg-amber-100 text-amber-700','bg-teal-100 text-teal-700'];
+  const colorIdx = d.id.charCodeAt(d.id.length - 1) % colors.length;
 
   return (
-    <div className="bg-white border border-slate-100 rounded-2xl p-4 hover:shadow-md transition-shadow">
-      <div className="flex items-start gap-3 mb-3">
-        {doctor.user.avatarUrl ? (
-          <img src={doctor.user.avatarUrl} alt={doctor.user.fullName}
-            className="w-11 h-11 rounded-full object-cover flex-shrink-0" />
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex flex-col gap-3 hover:shadow-md transition-shadow">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        {d.user.avatarUrl ? (
+          <img src={d.user.avatarUrl} alt="avatar" className="w-12 h-12 rounded-full object-cover" />
         ) : (
-          <div className={`w-11 h-11 rounded-full flex items-center justify-center text-base font-bold flex-shrink-0 ${colors[colorIdx]}`}>
-            {initial}
+          <div className={`w-12 h-12 rounded-full flex items-center justify-center text-base font-bold ${colors[colorIdx]}`}>
+            {initials}
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-slate-800 text-sm truncate">{doctor.user.fullName}</p>
-          <p className="text-xs text-slate-400">CRM {doctor.crm}/{doctor.uf}</p>
+          <p className="font-semibold text-slate-800 text-sm truncate">{d.user.fullName}</p>
+          <p className="text-xs text-slate-400">{d.doctorId} · CRM {d.crm}/{d.uf}</p>
         </div>
-        {doctor.crmStatus === 'verified' && (
-          <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full flex-shrink-0">✓ CFM</span>
+        {d.crmStatus === 'verified' && (
+          <span className="text-green-500 text-lg shrink-0" title="CRM verificado">✅</span>
         )}
       </div>
 
       {/* Especialidades */}
-      <div className="flex flex-wrap gap-1 mb-2">
-        {doctor.specialties.slice(0, 3).map(s => (
-          <span key={s} className="bg-red-50 text-red-700 text-xs px-2 py-0.5 rounded-full">{s}</span>
+      <div className="flex flex-wrap gap-1">
+        {(d.specialties ?? []).slice(0, 3).map((s: string) => (
+          <span key={s} className="text-xs bg-red-50 text-[#7B1E1E] px-2 py-0.5 rounded-full">{s}</span>
         ))}
-        {doctor.specialties.length > 3 && (
-          <span className="text-slate-400 text-xs self-center">+{doctor.specialties.length - 3}</span>
-        )}
       </div>
 
       {/* Bio */}
-      {doctor.bio && (
-        <p className="text-xs text-slate-500 mb-2 line-clamp-2">{doctor.bio}</p>
+      {d.bio && (
+        <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">{d.bio}</p>
       )}
 
-      {/* Cidade · Preço */}
-      <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
-        <span>{doctor.addressCity ? `${doctor.addressCity}/${doctor.uf}` : doctor.uf}</span>
-        {doctor.consultPrice
-          ? <span className="font-semibold text-slate-700">R$ {Number(doctor.consultPrice).toFixed(0)}</span>
-          : <span>A combinar</span>}
+      {/* Planos + localização */}
+      <div className="text-xs text-slate-400 space-y-0.5">
+        {d.addressCity && <div>📍 {d.addressCity}{d.uf ? `, ${d.uf}` : ''}</div>}
+        {d.healthPlans?.length > 0 && (
+          <div>🏥 {d.healthPlans.slice(0, 2).join(', ')}{d.healthPlans.length > 2 ? ` +${d.healthPlans.length - 2}` : ''}</div>
+        )}
+        {d._count?.patients > 0 && <div>👥 {d._count.patients} pacientes</div>}
       </div>
 
-      {/* Planos */}
-      {doctor.healthPlans?.length > 0 && (
-        <p className="text-xs text-slate-400 mb-3 truncate">
-          {doctor.healthPlans.slice(0, 3).join(' · ')}
-          {doctor.healthPlans.length > 3 && ` +${doctor.healthPlans.length - 3}`}
-        </p>
-      )}
-
-      {/* Pacientes */}
-      <p className="text-xs text-slate-400 mb-3">{doctor._count.patients} pacientes vinculados</p>
-
-      <button
-        onClick={handleLink}
-        disabled={linking || linked}
-        className={`w-full py-2 rounded-xl text-sm font-medium transition-colors
-          ${linked
-            ? 'bg-green-50 text-green-700 border border-green-200 cursor-default'
-            : 'bg-[#7B1E1E] hover:bg-[#6a1a1a] text-white disabled:opacity-60'}`}>
-        {linked ? '✓ Vinculado!' : linking ? 'Vinculando...' : '+ Adicionar aos meus médicos'}
-      </button>
+      {/* Preço + ação */}
+      <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+        {d.consultPrice ? (
+          <span className="text-sm font-semibold text-slate-800">
+            R$ {d.consultPrice.toLocaleString('pt-BR')}
+          </span>
+        ) : (
+          <span className="text-xs text-slate-400">Consulta a combinar</span>
+        )}
+        <button className="text-xs bg-[#7B1E1E] hover:bg-[#6a1a1a] text-white px-3 py-1.5 rounded-lg transition-colors font-medium">
+          Ver perfil
+        </button>
+      </div>
     </div>
   );
 }

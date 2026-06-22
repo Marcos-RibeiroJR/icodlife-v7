@@ -275,7 +275,7 @@ export default function VacinasPage() {
                     ? `Dose ${a.doseNumber} vencida desde ${formatDate(a.dueAt)}`
                     : `Dose ${a.doseNumber} prevista para ${formatDate(a.dueAt)}`}
                 </div>
-                <button onClick={() => openNew(a.vaccineId)} className="text-xs underline font-medium">
+                <button onClick={() => openNew()} className="text-xs underline font-medium">
                   Registrar
                 </button>
               </div>
@@ -434,20 +434,19 @@ export default function VacinasPage() {
                     <p className="text-xs text-slate-500 mb-2">{v.diseases.join(', ')}</p>
                     <div className="flex items-center gap-2 mb-2">
                       <div className="flex-1 bg-white/70 rounded-full h-1.5">
-                        <div className={`h-1.5 rounded-full ${isComplete ? 'bg-green-500' : 'bg-[#7B1E1E]'}`}
-                          style={{ width: `${pct}%` }} />
+                        <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, background: isComplete ? '#22c55e' : '#7B1E1E' }} />
                       </div>
-                      <span className="text-xs text-slate-500">{done}/{v.recommendedDoses}</span>
+                      <span className="text-xs text-slate-600 font-medium shrink-0">{done}/{v.recommendedDoses}</span>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-slate-400">
-                        {v.boosterYears ? `Reforço a cada ${v.boosterYears}a` : v.intervalDays ? `Intervalo: ${v.intervalDays}d` : 'Dose única'}
-                      </span>
-                      <button
-                        onClick={() => openNew(v.id)}
-                        className="text-xs text-[#7B1E1E] hover:underline font-medium"
-                      >
-                        {done > 0 ? '+ dose' : 'Registrar'}
+                    <div className="flex items-center justify-between mt-2">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        v.calendar === 'PNI' ? 'bg-green-100 text-green-700' :
+                        v.calendar === 'Internacional' ? 'bg-blue-100 text-blue-700' :
+                        'bg-amber-100 text-amber-700'
+                      }`}>{v.calendar}</span>
+                      <button onClick={() => openNew(v.id)}
+                        className="text-xs text-[#7B1E1E] hover:underline font-medium">
+                        {isComplete ? '✓ Completa' : '+ Registrar dose'}
                       </button>
                     </div>
                   </div>
@@ -459,70 +458,75 @@ export default function VacinasPage() {
 
         {/* ── Tab: Alertas ── */}
         {activeTab === 'alertas' && (
-          <div className="space-y-3">
+          <div>
             {!summary || summary.alerts.length === 0 ? (
               <div className="text-center py-16 text-slate-400">
                 <div className="text-5xl mb-4">✅</div>
                 <p className="font-medium">Nenhum alerta de vacinação</p>
-                <p className="text-sm mt-1">Todas as doses em dia!</p>
+                <p className="text-sm mt-1">Sua carteira está em dia!</p>
               </div>
             ) : (
-              summary.alerts.map((a, i) => (
-                <div key={i} className={`rounded-2xl border p-4 flex items-start gap-4 ${
-                  a.type === 'overdue'
-                    ? 'bg-red-50 border-red-200'
-                    : 'bg-amber-50 border-amber-200'
-                }`}>
-                  <span className="text-2xl">{a.type === 'overdue' ? '⚠️' : '🔔'}</span>
-                  <div className="flex-1">
-                    <p className="font-semibold text-slate-800">{a.vaccineName}</p>
-                    <p className="text-sm text-slate-600 mt-0.5">
-                      Dose {a.doseNumber} —{' '}
-                      {a.type === 'overdue'
-                        ? <span className="text-red-600 font-medium">Vencida em {formatDate(a.dueAt)}</span>
-                        : <span className="text-amber-600 font-medium">Prevista para {formatDate(a.dueAt)}</span>
-                      }
-                    </p>
+              <div className="space-y-3">
+                {summary.alerts.map((a, i) => (
+                  <div key={i} className={`rounded-2xl p-4 border ${
+                    a.type === 'overdue' ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'
+                  }`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <span className="text-lg mr-2">{a.type === 'overdue' ? '⚠️' : '🔔'}</span>
+                        <span className="font-semibold text-slate-800">{a.vaccineName}</span>
+                        <p className="text-sm text-slate-600 mt-1">
+                          Dose {a.doseNumber} — {a.type === 'overdue'
+                            ? `vencida desde ${formatDate(a.dueAt)}`
+                            : `prevista para ${formatDate(a.dueAt)}`}
+                        </p>
+                      </div>
+                      <button onClick={() => openNew()}
+                        className="text-xs bg-[#7B1E1E] text-white px-3 py-1.5 rounded-lg hover:bg-[#6a1a1a] font-medium">
+                        Registrar
+                      </button>
+                    </div>
                   </div>
-                  <button onClick={() => openNew(a.vaccineId)} className="btn-primary text-sm px-3 py-1.5">
-                    Registrar
-                  </button>
-                </div>
-              ))
+                ))}
+              </div>
             )}
           </div>
         )}
+
       </div>
 
       {/* ── Modal ── */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="font-bold text-slate-800">{editing ? 'Editar Dose' : 'Registrar Dose'}</h3>
-              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg my-4">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+              <h2 className="text-base font-bold text-slate-800">
+                {editing ? 'Editar registro' : 'Registrar Dose'}
+              </h2>
+              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-700 text-xl">✕</button>
             </div>
             <div className="p-6 space-y-4">
-              {/* Vacina — searchable combobox */}
-              <VaccineCombobox
-                catalog={catalog}
-                value={form.vaccineId}
-                onChange={id => setForm(f => ({ ...f, vaccineId: id }))}
-                disabled={!!editing}
-              />
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Vacina *</label>
+                <VaccineCombobox
+                  catalog={catalog}
+                  value={form.vaccineId}
+                  onChange={id => setForm(f => ({ ...f, vaccineId: id }))}
+                  disabled={!!editing}
+                />
+              </div>
 
-              {/* Dose + Status */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="label">Número da dose</label>
-                  <input type="number" min={1} max={10} className="input-field"
-                    value={form.doseNumber}
-                    onChange={e => setForm(f => ({ ...f, doseNumber: Number(e.target.value) }))} />
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Nº da dose</label>
+                  <input type="number" min={1} max={10} value={form.doseNumber}
+                    onChange={e => setForm(f => ({ ...f, doseNumber: Number(e.target.value) }))}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none" />
                 </div>
                 <div>
-                  <label className="label">Status</label>
-                  <select className="input-field" value={form.status}
-                    onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Status</label>
+                  <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none">
                     <option value="completed">Aplicada</option>
                     <option value="scheduled">Agendada</option>
                     <option value="skipped">Pulada</option>
@@ -530,67 +534,70 @@ export default function VacinasPage() {
                 </div>
               </div>
 
-              {/* Data */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="label">{form.status === 'scheduled' ? 'Data agendada' : 'Data de aplicação'}</label>
-                  <input type="date" className="input-field"
-                    value={form.status === 'scheduled' ? form.scheduledAt : form.appliedAt}
-                    onChange={e => setForm(f => form.status === 'scheduled'
-                      ? { ...f, scheduledAt: e.target.value }
-                      : { ...f, appliedAt: e.target.value })} />
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Data de aplicação</label>
+                  <input type="date" value={form.appliedAt}
+                    onChange={e => setForm(f => ({ ...f, appliedAt: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none" />
                 </div>
                 <div>
-                  <label className="label">Nº do lote</label>
-                  <input type="text" className="input-field" placeholder="Ex: EW0553"
-                    value={form.lotNumber}
-                    onChange={e => setForm(f => ({ ...f, lotNumber: e.target.value }))} />
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Data agendada</label>
+                  <input type="date" value={form.scheduledAt}
+                    onChange={e => setForm(f => ({ ...f, scheduledAt: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none" />
                 </div>
               </div>
 
-              {/* Local + Profissional */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="label">Local de vacinação</label>
-                  <input type="text" className="input-field" placeholder="Ex: UBS Centro"
-                    value={form.location}
-                    onChange={e => setForm(f => ({ ...f, location: e.target.value }))} />
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Local</label>
+                  <input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
+                    placeholder="Ex: UBS Centro"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none" />
                 </div>
                 <div>
-                  <label className="label">Profissional</label>
-                  <input type="text" className="input-field" placeholder="Nome do profissional"
-                    value={form.professional}
-                    onChange={e => setForm(f => ({ ...f, professional: e.target.value }))} />
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Profissional</label>
+                  <input value={form.professional} onChange={e => setForm(f => ({ ...f, professional: e.target.value }))}
+                    placeholder="Nome do aplicador"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none" />
                 </div>
               </div>
 
-              {/* Fabricante */}
-              <div>
-                <label className="label">Fabricante</label>
-                <input type="text" className="input-field" placeholder="Ex: Pfizer, Butantan, Bio-Manguinhos"
-                  value={form.manufacturer}
-                  onChange={e => setForm(f => ({ ...f, manufacturer: e.target.value }))} />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Lote</label>
+                  <input value={form.lotNumber} onChange={e => setForm(f => ({ ...f, lotNumber: e.target.value }))}
+                    placeholder="Número do lote"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Fabricante</label>
+                  <input value={form.manufacturer} onChange={e => setForm(f => ({ ...f, manufacturer: e.target.value }))}
+                    placeholder="Ex: Bio-Manguinhos"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none" />
+                </div>
               </div>
 
-              {/* Obs */}
               <div>
-                <label className="label">Observações</label>
-                <textarea rows={2} className="input-field resize-none" placeholder="Reações, observações..."
-                  value={form.notes}
-                  onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+                <label className="block text-xs font-medium text-slate-600 mb-1">Observações</label>
+                <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                  rows={2} placeholder="Reações, observações..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none resize-none" />
               </div>
 
-              {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-2">{error}</div>
-              )}
-            </div>
-            <div className="p-6 border-t border-slate-100 flex gap-3 justify-end">
-              <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">
-                Cancelar
-              </button>
-              <button onClick={handleSave} disabled={saving} className="btn-primary px-6 py-2 text-sm">
-                {saving ? 'Salvando...' : editing ? 'Salvar' : 'Registrar'}
-              </button>
+              {error && <p className="text-red-600 text-xs">{error}</p>}
+
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => setShowModal(false)}
+                  className="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg text-sm hover:bg-slate-50">
+                  Cancelar
+                </button>
+                <button onClick={handleSave} disabled={saving}
+                  className="flex-1 bg-[#7B1E1E] hover:bg-[#6a1a1a] disabled:opacity-60 text-white font-medium py-2 rounded-lg text-sm transition-colors">
+                  {saving ? 'Salvando...' : editing ? 'Salvar alterações' : 'Registrar Dose'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -600,7 +607,8 @@ export default function VacinasPage() {
   );
 }
 
-// ── VaccineCombobox ───────────────────────────────────────────────────────────
+// ── VaccineCombobox ──────────────────────────────────────────────────────────
+
 function VaccineCombobox({
   catalog, value, onChange, disabled,
 }: {
@@ -613,16 +621,6 @@ function VaccineCombobox({
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const selected = catalog.find(v => v.id === value);
-
-  const filtered = query.trim()
-    ? catalog.filter(v =>
-        v.name.toLowerCase().includes(query.toLowerCase()) ||
-        (v.tradeName ?? '').toLowerCase().includes(query.toLowerCase()) ||
-        v.diseases.some(d => d.toLowerCase().includes(query.toLowerCase()))
-      )
-    : catalog;
-
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
@@ -631,54 +629,61 @@ function VaccineCombobox({
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  function select(v: Vaccine) {
-    onChange(v.id);
-    setQuery(v.name + (v.tradeName ? ` (${v.tradeName})` : ''));
-    setOpen(false);
-  }
-
-  function handleFocus() {
-    if (!disabled) {
-      setOpen(true);
-      if (selected) setQuery(''); // clear so user can type new search
-    }
-  }
+  const selected = catalog.find(v => v.id === value);
+  const filtered = catalog.filter(v =>
+    !query ||
+    v.name.toLowerCase().includes(query.toLowerCase()) ||
+    (v.tradeName && v.tradeName.toLowerCase().includes(query.toLowerCase())) ||
+    v.diseases.some(d => d.toLowerCase().includes(query.toLowerCase()))
+  );
 
   return (
     <div ref={ref} className="relative">
-      <label className="label">Vacina *</label>
-      <input
-        type="text"
-        className="input-field"
-        placeholder="Digite para buscar vacina..."
-        value={open ? query : (selected ? selected.name + (selected.tradeName ? ` (${selected.tradeName})` : '') : query)}
-        onFocus={handleFocus}
-        onChange={e => { setQuery(e.target.value); setOpen(true); onChange(''); }}
-        disabled={disabled}
-        autoComplete="off"
-      />
-      {open && filtered.length > 0 && (
-        <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-56 overflow-y-auto">
-          {filtered.map(v => (
-            <button
-              key={v.id}
-              type="button"
-              onMouseDown={() => select(v)}
-              className="w-full text-left px-4 py-2.5 hover:bg-slate-50 text-sm border-b border-slate-50 last:border-0"
-            >
-              <span className="font-medium text-slate-800">{v.name}</span>
-              {v.tradeName && <span className="text-slate-400 ml-1">({v.tradeName})</span>}
-              <span className="text-xs text-slate-400 ml-2">{v.diseases.slice(0, 2).join(', ')}</span>
-              <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${v.calendar === 'PNI' ? 'bg-green-100 text-green-700' : v.calendar === 'Recomendada' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
-                {v.calendar}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-      {open && query.trim() !== '' && filtered.length === 0 && (
-        <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg px-4 py-3 text-sm text-slate-400">
-          Nenhuma vacina encontrada para "{query}"
+      <div
+        className={`w-full px-3 py-2 border rounded-lg text-sm flex items-center gap-2 cursor-text ${
+          disabled ? 'bg-slate-50 border-slate-200' : 'border-slate-300 focus-within:ring-2 focus-within:ring-red-500'
+        }`}
+        onClick={() => !disabled && setOpen(true)}
+      >
+        {selected && !open ? (
+          <span className="flex-1 truncate text-slate-800">{selected.name}</span>
+        ) : (
+          <input
+            autoFocus={open}
+            value={open ? query : (selected?.name ?? '')}
+            onChange={e => { setQuery(e.target.value); setOpen(true); }}
+            onFocus={() => !disabled && setOpen(true)}
+            placeholder="Digite para buscar vacina..."
+            disabled={disabled}
+            className="flex-1 outline-none bg-transparent placeholder-slate-400"
+          />
+        )}
+        {!disabled && <span className="text-slate-400 text-xs">{open ? '▲' : '▼'}</span>}
+      </div>
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+          {filtered.length === 0 ? (
+            <div className="px-4 py-3 text-sm text-slate-400">Nenhuma vacina encontrada</div>
+          ) : (
+            filtered.map(v => (
+              <button key={v.id} type="button"
+                className={`w-full text-left px-4 py-2.5 hover:bg-red-50 text-sm transition-colors flex items-center justify-between gap-3 ${
+                  v.id === value ? 'bg-red-50' : ''
+                }`}
+                onClick={() => { onChange(v.id); setQuery(''); setOpen(false); }}>
+                <div>
+                  <div className="font-medium text-slate-800">{v.name}</div>
+                  {v.tradeName && <div className="text-xs text-slate-400">{v.tradeName}</div>}
+                  <div className="text-xs text-slate-500">{v.diseases.slice(0, 2).join(', ')}</div>
+                </div>
+                <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${
+                  v.calendar === 'PNI' ? 'bg-green-100 text-green-700' :
+                  v.calendar === 'Internacional' ? 'bg-blue-100 text-blue-700' :
+                  'bg-amber-100 text-amber-700'
+                }`}>{v.calendar}</span>
+              </button>
+            ))
+          )}
         </div>
       )}
     </div>
