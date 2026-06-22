@@ -24,6 +24,8 @@ import { DoctorModule } from './modules/doctor/doctor.module';
 import { MeusMedicosModule } from './modules/meus-medicos/meus-medicos.module';
 // Sprint 7 — Prontuário (QR Code sharing)
 import { ProntuarioModule } from './modules/prontuario/prontuario.module';
+// Sprint 8 — Módulo Cirurgia
+import { SurgeryModule } from './modules/surgery/surgery.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { RedisModule } from './common/redis/redis.module';
 import { AuditModule } from './common/audit/audit.module';
@@ -57,6 +59,8 @@ import { AuditModule } from './common/audit/audit.module';
     MeusMedicosModule,
     // ── Sprint 7 — Prontuário ──────────────────────────────────────
     ProntuarioModule,
+    // ── Sprint 8 — Cirurgia ────────────────────────────────────────
+    SurgeryModule,
   ],
 })
 export class AppModule {}

@@ -216,6 +216,9 @@ model User {
   doctor                Doctor?
   patientDoctors        PatientDoctor[]
 
+  // Sprint 8 — Módulo Cirurgia
+  surgeries             Surgery[]
+
   @@map("users")
 }
 
@@ -284,6 +287,9 @@ model FamilyMember {
   acceptedAt      DateTime?          @map("accepted_at")
   createdAt       DateTime           @default(now()) @map("created_at")
   updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  // Sprint 8 — cirurgias registradas para este familiar
+  surgeries       Surgery[]
 
   @@map("family_members")
 }
@@ -891,4 +897,60 @@ model PatientDoctor {
 
   @@unique([userId, doctorId])
   @@map("patient_doctors")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sprint 8 — Módulo Cirurgia
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum SurgeryStatus {
+  scheduled   // agendada futuramente
+  completed   // realizada no passado
+  canceled    // cancelada
+}
+
+model Surgery {
+  id              String        @id @default(uuid())
+  userId          String        @map("user_id")
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Dados da cirurgia
+  procedureName   String        @map("procedure_name")   // ex: "Apendicectomia"
+  procedureCode   String?       @map("procedure_code")   // CID-10 ou TUSS
+  surgeryDate     DateTime?     @map("surgery_date")      // null se apenas agendada sem data
+  scheduledDate   DateTime?     @map("scheduled_date")   // data agendada futura
+  status          SurgeryStatus @default(completed)
+
+  // Local e equipe
+  hospitalName    String?       @map("hospital_name")
+  hospitalCity    String?       @map("hospital_city")
+  surgeonName     String?       @map("surgeon_name")
+  anesthesiaType  String?       @map("anesthesia_type")  // geral | local | raquianestesia | sedacao
+
+  // Indicação e resultado
+  indication      String?       @db.Text                 // motivo da cirurgia
+  technique       String?                                // laparoscopia | aberta | robótica
+  duration        Int?                                   // minutos
+  bloodLoss       Int?          @map("blood_loss")       // ml
+
+  // Pós-operatório
+  complications   String[]                               // lista de complicações
+  recovery        String?       @db.Text                 // notas de recuperação
+  hospitalDays    Int?          @map("hospital_days")    // dias de internação
+  returnToWork    Int?          @map("return_to_work")   // dias até retornar ao trabalho
+
+  // Materiais implantados (próteses, stents, etc.)
+  implants        String[]                               // lista de implantes
+
+  // Link com familiar (cirurgia hereditária registrada para membro da família)
+  familyMemberId  String?       @map("family_member_id")
+  familyMember    FamilyMember? @relation(fields: [familyMemberId], references: [id])
+
+  notes           String?       @db.Text
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  @@index([userId, surgeryDate])
+  @@index([userId, status])
+  @@map("surgeries")
 }

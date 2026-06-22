@@ -3,6 +3,39 @@
 import { useState, useEffect } from 'react';
 import { AppLayout } from '../../components/layout/AppLayout';
 import { familyApi } from '../../lib/api';
+import axios from 'axios';
+
+const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
+function getToken() { return typeof window !== 'undefined' ? localStorage.getItem('icodlife_token') : null; }
+function authH()    { return { headers: { Authorization: `Bearer ${getToken()}` } }; }
+
+function FamilySurgeries() {
+  const [surgeries, setSurgeries] = useState<any[]>([]);
+  useEffect(() => {
+    axios.get(`${API}/surgery/family`, authH()).then(r => setSurgeries(r.data)).catch(() => {});
+  }, []);
+  if (surgeries.length === 0) return null;
+  return (
+    <div className="card p-5">
+      <h3 className="font-bold text-slate-800 mb-3">Cirurgias na família ({surgeries.length})</h3>
+      <div className="space-y-2">
+        {surgeries.map((s: any) => (
+          <div key={s.id} className="flex items-start gap-3 p-3 bg-purple-50 border border-purple-100 rounded-xl">
+            <span className="text-lg flex-shrink-0">🔪</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-slate-800">{s.procedureName}</p>
+              <p className="text-xs text-slate-500">
+                {s.familyMember?.fullName ?? s.familyMember?.relationship}
+                {s.surgeryDate ? ` · ${new Date(s.surgeryDate).toLocaleDateString('pt-BR')}` : ''}
+                {s.hospitalName ? ` · ${s.hospitalName}` : ''}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 const RELATIONSHIPS = [
   { value:'father', label:'Pai' }, { value:'mother', label:'Mae' },
@@ -455,6 +488,9 @@ export default function FamilyPage() {
                 </div>
               </div>
             )}
+
+            {/* Cirurgias hereditárias */}
+            <FamilySurgeries />
           </div>
         )}
 
