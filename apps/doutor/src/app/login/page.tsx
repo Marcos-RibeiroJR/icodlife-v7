@@ -40,14 +40,9 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 mb-2">
-            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
-              <span className="text-white font-bold text-lg">+</span>
-            </div>
-            <span className="text-2xl font-bold text-slate-800">IcodLife</span>
-            <span className="text-sm font-medium text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">Doutor</span>
-          </div>
-          <p className="text-slate-500 text-sm">Painel exclusivo para médicos credenciados</p>
+          <img src="/logo-dark.svg" alt="IcodLife" className="h-12 w-auto mx-auto mb-2" />
+          <span className="inline-block text-xs font-semibold text-[#7B1E1E] bg-red-50 px-3 py-0.5 rounded-full tracking-wide uppercase">Painel Médico</span>
+          <p className="text-slate-500 text-sm mt-2">Exclusivo para médicos credenciados</p>
         </div>
 
         {/* Card */}

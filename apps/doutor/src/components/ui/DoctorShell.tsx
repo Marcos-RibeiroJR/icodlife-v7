@@ -30,15 +30,8 @@ export default function DoctorShell({ children }: { children: React.ReactNode })
       {/* Sidebar */}
       <aside className="w-56 bg-white border-r border-slate-200 flex flex-col">
         <div className="p-4 border-b border-slate-100">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">+</span>
-            </div>
-            <div>
-              <span className="text-sm font-bold text-slate-800">IcodLife</span>
-              <span className="block text-xs text-blue-600 font-medium">Doutor</span>
-            </div>
-          </div>
+          <img src="/logo-dark.svg" alt="IcodLife" className="h-9 w-auto mb-1" />
+          <span className="block text-xs text-[#7B1E1E] font-semibold tracking-wide uppercase">Painel Médico</span>
         </div>
 
         <nav className="flex-1 p-3 space-y-1">

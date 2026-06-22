@@ -1,5 +1,5 @@
 // apps/api/prisma/seed-users.ts
-// Seed mínimo: cria usuários de teste (paciente + doutor)
+// Seed mínimo: cria usuários de teste (paciente + doutor) + catálogo PNI
 // Execute: npx ts-node prisma/seed-users.ts
 
 import { PrismaClient } from '@prisma/client';
@@ -66,7 +66,6 @@ async function main() {
     },
   });
 
-  // Garante counter para DoctorCounter
   await prisma.doctorCounter.upsert({
     where: { uf: 'SP' }, update: {}, create: { uf: 'SP', nextValue: 2 },
   });
@@ -90,25 +89,14 @@ async function main() {
       website: 'https://drcarlos.com.br',
     },
   });
-
   console.log(`✅ Doutor: ${doutorUser.email} → doctorId: ${doctor.doctorId}`);
 
-  console.log('\n📋 Credenciais de teste:');
-  console.log('  Paciente → http://localhost:3000/auth/login');
-  console.log('    Email: paciente@demo.icodlife.com');
-  console.log('    Senha: Demo@12345');
-  console.log('');
-  console.log('  Doutor → http://localhost:3002/login');
-  console.log('    Email: doutor@demo.icodlife.com');
-  console.log('    Senha: Demo@12345');
-}
-
-main()
-  .catch(e => { console.error('❌ Erro:', e); process.exit(1); })
-  .finally(() => prisma.$disconnect());
-
   // ── Catálogo de Vacinas PNI ────────────────────────────────────────────────
-  const vaccines = [
+  const vaccines: Array<{
+    name: string; tradeName?: string; cvxCode?: string; diseases: string[];
+    recommendedDoses: number; intervalDays?: number; boosterYears?: number;
+    calendar: string; ageGroups: string[]; notes?: string; manufacturer?: string;
+  }> = [
     // Recém-nascido
     { name: 'BCG', diseases: ['Tuberculose'], recommendedDoses: 1, calendar: 'PNI', ageGroups: ['recém-nascido'], notes: 'Dose única ao nascer' },
     { name: 'Hepatite B', tradeName: 'Engerix-B', cvxCode: '08', diseases: ['Hepatite B'], recommendedDoses: 3, intervalDays: 30, calendar: 'PNI', ageGroups: ['recém-nascido', 'criança', 'adulto'] },
@@ -132,33 +120,45 @@ main()
     { name: 'Influenza (gripe)', cvxCode: '88', diseases: ['Influenza'], recommendedDoses: 1, boosterYears: 1, calendar: 'PNI', ageGroups: ['criança', 'adolescente', 'adulto', 'idoso', 'gestante'], notes: 'Dose anual — campanha nacional' },
     { name: 'Pneumocócica 23-valente', cvxCode: '33', diseases: ['Pneumonia pneumocócica'], recommendedDoses: 1, calendar: 'PNI', ageGroups: ['idoso', 'imunocomprometido'] },
     // COVID-19
-    { name: 'COVID-19 — CoronaVac (Sinovac/Butantan)', tradeName: 'CoronaVac', cvxCode: '510', diseases: ['COVID-19'], recommendedDoses: 2, intervalDays: 28, boosterYears: 1, calendar: 'PNI', ageGroups: ['adulto', 'idoso'], manufacturer: 'Butantan/Sinovac' },
+    { name: 'COVID-19 — CoronaVac', tradeName: 'CoronaVac', cvxCode: '510', diseases: ['COVID-19'], recommendedDoses: 2, intervalDays: 28, boosterYears: 1, calendar: 'PNI', ageGroups: ['adulto', 'idoso'], manufacturer: 'Butantan/Sinovac' },
     { name: 'COVID-19 — Pfizer/BioNTech', tradeName: 'Comirnaty', cvxCode: '208', diseases: ['COVID-19'], recommendedDoses: 2, intervalDays: 21, boosterYears: 1, calendar: 'PNI', ageGroups: ['adulto', 'adolescente', 'criança'], manufacturer: 'Pfizer/BioNTech' },
-    { name: 'COVID-19 — AstraZeneca/Oxford (Fiocruz)', tradeName: 'Vaxzevria', cvxCode: '210', diseases: ['COVID-19'], recommendedDoses: 2, intervalDays: 84, boosterYears: 1, calendar: 'PNI', ageGroups: ['adulto', 'idoso'], manufacturer: 'AstraZeneca/Fiocruz' },
+    { name: 'COVID-19 — AstraZeneca/Fiocruz', tradeName: 'Vaxzevria', cvxCode: '210', diseases: ['COVID-19'], recommendedDoses: 2, intervalDays: 84, boosterYears: 1, calendar: 'PNI', ageGroups: ['adulto', 'idoso'], manufacturer: 'AstraZeneca/Fiocruz' },
     { name: 'COVID-19 — Janssen', tradeName: 'Janssen', cvxCode: '212', diseases: ['COVID-19'], recommendedDoses: 1, boosterYears: 1, calendar: 'PNI', ageGroups: ['adulto', 'idoso'], manufacturer: 'Janssen/J&J' },
     { name: 'COVID-19 — Moderna', tradeName: 'Spikevax', cvxCode: '207', diseases: ['COVID-19'], recommendedDoses: 2, intervalDays: 28, boosterYears: 1, calendar: 'Internacional', ageGroups: ['adulto', 'idoso'], manufacturer: 'Moderna' },
-    // Recomendadas (não obrigatórias PNI)
+    // Recomendadas
     { name: 'Dengue (Dengvaxia)', cvxCode: '56', diseases: ['Dengue'], recommendedDoses: 3, intervalDays: 180, calendar: 'PNI', ageGroups: ['criança', 'adolescente'], notes: 'Somente soropositivos confirmados' },
     { name: 'Meningocócica B', cvxCode: '162', diseases: ['Meningite meningocócica B'], recommendedDoses: 2, intervalDays: 60, calendar: 'Recomendada', ageGroups: ['criança', 'adolescente', 'adulto'] },
     { name: 'Herpes Zóster (Shingrix)', cvxCode: '187', diseases: ['Herpes Zóster'], recommendedDoses: 2, intervalDays: 60, calendar: 'Recomendada', ageGroups: ['idoso'], notes: 'Indicada para maiores de 50 anos' },
   ];
 
   for (const v of vaccines) {
+    const cvxKey = v.cvxCode ?? `no-cvx-${v.name.replace(/\s+/g, '-').toLowerCase()}`;
     await prisma.vaccine.upsert({
-      where:  { cvxCode: v.cvxCode ?? `no-cvx-${v.name}` },
+      where:  { cvxCode: cvxKey },
       update: { name: v.name, diseases: v.diseases, recommendedDoses: v.recommendedDoses },
       create: {
         name:             v.name,
-        tradeName:        (v as any).tradeName,
-        cvxCode:          v.cvxCode ?? `no-cvx-${v.name.replace(/\s+/g, '-').toLowerCase()}`,
+        tradeName:        v.tradeName,
+        cvxCode:          cvxKey,
         diseases:         v.diseases,
         recommendedDoses: v.recommendedDoses,
-        intervalDays:     (v as any).intervalDays ?? null,
-        boosterYears:     (v as any).boosterYears ?? null,
+        intervalDays:     v.intervalDays ?? null,
+        boosterYears:     v.boosterYears ?? null,
         ageGroups:        v.ageGroups,
         calendar:         v.calendar,
-        notes:            (v as any).notes,
+        notes:            v.notes,
       },
     });
   }
   console.log(`✅ ${vaccines.length} vacinas no catálogo PNI`);
+
+  console.log('\n📋 Credenciais de teste:');
+  console.log('  Paciente → http://localhost:3000/auth/login');
+  console.log('    Email: paciente@demo.icodlife.com  |  Senha: Demo@12345');
+  console.log('  Doutor   → http://localhost:3002/login');
+  console.log('    Email: doutor@demo.icodlife.com    |  Senha: Demo@12345');
+}
+
+main()
+  .catch(e => { console.error('❌ Erro:', e); process.exit(1); })
+  .finally(() => prisma.$disconnect());

@@ -28,6 +28,9 @@ const NAV_FEMALE = [
 const NAV_SPECIALTIES = [
   { href: '/ophthalmology',       icon: '👁️',  label: 'Oftalmologia' },
   { href: '/occupational-health', icon: '🦺',  label: 'Med. do Trabalho' },
+  { href: '/cirurgias',           icon: '🔪',  label: 'Cirurgias' },
+  { href: '/vacinas',             icon: '💉',  label: 'Vacinas' },
+  { href: '/medicos',             icon: '🩺',  label: 'Médicos' },
 ];
 
 const NAV_BOTTOM = [
@@ -60,14 +63,8 @@ export function Sidebar() {
   return (
     <aside className="fixed left-0 top-0 bottom-0 bg-[#7B1E1E] flex flex-col z-50 shadow-2xl" style={{ width: '248px' }}>
       {/* Logo */}
-      <div className="px-6 py-6 border-b border-white/10">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center text-xl">🩺</div>
-          <div>
-            <div className="text-white font-bold text-lg tracking-tight">IcodLife</div>
-            <div className="text-white/35 text-[9.5px] uppercase tracking-widest">Saúde Pessoal</div>
-          </div>
-        </div>
+      <div className="px-5 py-5 border-b border-white/10">
+        <img src="/logo.svg" alt="IcodLife" className="h-10 w-auto" />
       </div>
 
       {/* User card */}

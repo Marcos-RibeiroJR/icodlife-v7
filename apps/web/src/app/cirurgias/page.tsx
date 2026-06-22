@@ -2,8 +2,9 @@
 // apps/web/src/app/cirurgias/page.tsx
 import { useEffect, useState } from 'react';
 import axios from 'axios';
+import { AppLayout } from '../../components/layout/AppLayout';
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
+const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
 function getToken() {
   return typeof window !== 'undefined' ? localStorage.getItem('icodlife_token') : null;
@@ -141,7 +142,8 @@ export default function CirurgiasPage() {
   const canceled  = mine.filter(s => s.status === 'canceled');
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <AppLayout>
+    <div className="min-h-screen bg-[#FFF8F8]">
       {/* Header */}
       <div className="bg-white border-b border-slate-200 px-6 py-5">
         <div className="flex items-center justify-between max-w-4xl mx-auto">
@@ -481,5 +483,6 @@ function SurgeryCard({ surgery: s, onEdit, onDelete, showFamily = false }: {
         </div>
       </div>
     </div>
+    </AppLayout>
   );
 }

@@ -1,9 +1,41 @@
 'use client';
 // apps/web/src/app/vacinas/page.tsx
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../store/auth.store';
+import { AppLayout } from '../../components/layout/AppLayout';
+
+// ── Catálogo estático (fallback quando API não retorna) ───────────────────────
+const STATIC_VACCINES = [
+  { id: 's-bcg',     name: 'BCG',                          tradeName: '',              diseases: ['Tuberculose'],                                    recommendedDoses: 1, intervalDays: null, boosterYears: null, ageGroups: ['recém-nascido'],   calendar: 'PNI',          notes: 'Dose única ao nascer' },
+  { id: 's-hepb',    name: 'Hepatite B',                   tradeName: 'Engerix-B',     diseases: ['Hepatite B'],                                    recommendedDoses: 3, intervalDays: 30,   boosterYears: null, ageGroups: ['recém-nascido','adulto'], calendar: 'PNI', notes: '' },
+  { id: 's-penta',   name: 'Pentavalente (DTP+Hib+HepB)',  tradeName: '',              diseases: ['Difteria','Tétano','Coqueluche','Haemophilus b','Hepatite B'], recommendedDoses: 3, intervalDays: 60, boosterYears: null, ageGroups: ['criança'], calendar: 'PNI', notes: '' },
+  { id: 's-vip',     name: 'Poliomielite VIP',             tradeName: '',              diseases: ['Poliomielite'],                                  recommendedDoses: 3, intervalDays: 60,   boosterYears: null, ageGroups: ['criança'],   calendar: 'PNI',          notes: '' },
+  { id: 's-vop',     name: 'Poliomielite VOP (oral)',       tradeName: '',              diseases: ['Poliomielite'],                                  recommendedDoses: 1, intervalDays: null, boosterYears: null, ageGroups: ['criança'],   calendar: 'PNI',          notes: 'Reforço oral a partir dos 15 meses' },
+  { id: 's-rota',    name: 'Rotavírus',                    tradeName: 'Rotarix',       diseases: ['Gastroenterite por rotavírus'],                  recommendedDoses: 2, intervalDays: 30,   boosterYears: null, ageGroups: ['criança'],   calendar: 'PNI',          notes: '' },
+  { id: 's-pneu10',  name: 'Pneumocócica 10-valente',       tradeName: 'Synflorix',     diseases: ['Pneumonia','Meningite pneumocócica','Otite média'], recommendedDoses: 3, intervalDays: 60, boosterYears: null, ageGroups: ['criança'], calendar: 'PNI', notes: '' },
+  { id: 's-menC',    name: 'Meningocócica C',               tradeName: 'Menjugate',     diseases: ['Meningite meningocócica C'],                     recommendedDoses: 2, intervalDays: 60,   boosterYears: null, ageGroups: ['criança'],   calendar: 'PNI',          notes: '' },
+  { id: 's-fa',      name: 'Febre Amarela',                 tradeName: 'Bio-Manguinhos',diseases: ['Febre Amarela'],                                 recommendedDoses: 1, intervalDays: null, boosterYears: 10,   ageGroups: ['criança','adulto'], calendar: 'PNI', notes: 'Reforço a cada 10 anos para viajantes' },
+  { id: 's-scr',     name: 'Tríplice Viral (SCR)',          tradeName: 'Priorix',       diseases: ['Sarampo','Caxumba','Rubéola'],                   recommendedDoses: 2, intervalDays: 30,   boosterYears: null, ageGroups: ['criança'],   calendar: 'PNI',          notes: '' },
+  { id: 's-scrv',    name: 'Tetraviral (SCRV)',              tradeName: 'Proquad',       diseases: ['Sarampo','Caxumba','Rubéola','Varicela'],         recommendedDoses: 1, intervalDays: null, boosterYears: null, ageGroups: ['criança'],   calendar: 'PNI',          notes: '' },
+  { id: 's-hepa',    name: 'Hepatite A',                    tradeName: 'Havrix',        diseases: ['Hepatite A'],                                    recommendedDoses: 1, intervalDays: null, boosterYears: null, ageGroups: ['criança'],   calendar: 'PNI',          notes: '' },
+  { id: 's-vz',      name: 'Varicela',                      tradeName: 'Varivax',       diseases: ['Catapora'],                                      recommendedDoses: 1, intervalDays: null, boosterYears: null, ageGroups: ['criança','adulto'], calendar: 'PNI', notes: '' },
+  { id: 's-dtp',     name: 'DTP (tríplice bacteriana)',     tradeName: '',              diseases: ['Difteria','Tétano','Coqueluche'],                 recommendedDoses: 1, intervalDays: null, boosterYears: 10,   ageGroups: ['adolescente','adulto'], calendar: 'PNI', notes: 'Reforço a cada 10 anos' },
+  { id: 's-dt',      name: 'dT (dupla adulto)',              tradeName: '',              diseases: ['Difteria','Tétano'],                             recommendedDoses: 3, intervalDays: 60,   boosterYears: 10,   ageGroups: ['adulto'],    calendar: 'PNI',          notes: '' },
+  { id: 's-hpv',     name: 'HPV Quadrivalente',             tradeName: 'Gardasil',      diseases: ['HPV (tipos 6,11,16,18)'],                        recommendedDoses: 2, intervalDays: 180,  boosterYears: null, ageGroups: ['adolescente'], calendar: 'PNI', notes: '' },
+  { id: 's-menACWY', name: 'Meningocócica ACWY',            tradeName: 'Menactra',      diseases: ['Meningite meningocócica A/C/W/Y'],               recommendedDoses: 1, intervalDays: null, boosterYears: null, ageGroups: ['adolescente'], calendar: 'PNI', notes: '' },
+  { id: 's-flu',     name: 'Influenza (gripe)',              tradeName: 'Vaxigrip Tetra',diseases: ['Influenza'],                                     recommendedDoses: 1, intervalDays: null, boosterYears: 1,    ageGroups: ['criança','adulto','idoso'], calendar: 'PNI', notes: 'Dose anual — campanha nacional' },
+  { id: 's-pneu23',  name: 'Pneumocócica 23-valente',        tradeName: 'Pneumovax 23',  diseases: ['Pneumonia pneumocócica'],                        recommendedDoses: 1, intervalDays: null, boosterYears: null, ageGroups: ['idoso'],      calendar: 'PNI',          notes: '' },
+  { id: 's-cov-cv',  name: 'COVID-19 — CoronaVac',           tradeName: 'CoronaVac',     diseases: ['COVID-19'],                                      recommendedDoses: 2, intervalDays: 28,   boosterYears: 1,    ageGroups: ['adulto','idoso'], calendar: 'PNI', notes: '' },
+  { id: 's-cov-pf',  name: 'COVID-19 — Pfizer/BioNTech',    tradeName: 'Comirnaty',     diseases: ['COVID-19'],                                      recommendedDoses: 2, intervalDays: 21,   boosterYears: 1,    ageGroups: ['adulto','adolescente'], calendar: 'PNI', notes: '' },
+  { id: 's-cov-az',  name: 'COVID-19 — AstraZeneca',        tradeName: 'Vaxzevria',     diseases: ['COVID-19'],                                      recommendedDoses: 2, intervalDays: 84,   boosterYears: 1,    ageGroups: ['adulto','idoso'], calendar: 'PNI', notes: '' },
+  { id: 's-cov-jj',  name: 'COVID-19 — Janssen',            tradeName: 'Janssen',       diseases: ['COVID-19'],                                      recommendedDoses: 1, intervalDays: null, boosterYears: 1,    ageGroups: ['adulto'],    calendar: 'PNI',          notes: '' },
+  { id: 's-cov-mo',  name: 'COVID-19 — Moderna',            tradeName: 'Spikevax',      diseases: ['COVID-19'],                                      recommendedDoses: 2, intervalDays: 28,   boosterYears: 1,    ageGroups: ['adulto'],    calendar: 'Internacional', notes: '' },
+  { id: 's-dengue',  name: 'Dengue (Dengvaxia)',             tradeName: 'Dengvaxia',     diseases: ['Dengue'],                                        recommendedDoses: 3, intervalDays: 180,  boosterYears: null, ageGroups: ['criança','adolescente'], calendar: 'PNI', notes: 'Somente soropositivos confirmados' },
+  { id: 's-menB',    name: 'Meningocócica B',               tradeName: 'Bexsero',       diseases: ['Meningite meningocócica B'],                     recommendedDoses: 2, intervalDays: 60,   boosterYears: null, ageGroups: ['criança','adulto'], calendar: 'Recomendada', notes: '' },
+  { id: 's-hz',      name: 'Herpes Zóster (Shingrix)',       tradeName: 'Shingrix',      diseases: ['Herpes Zóster'],                                 recommendedDoses: 2, intervalDays: 60,   boosterYears: null, ageGroups: ['idoso'],      calendar: 'Recomendada',  notes: 'Indicada para maiores de 50 anos' },
+];
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -104,10 +136,18 @@ export default function VacinasPage() {
         api.get('/vaccinations'),
         api.get('/vaccinations/summary'),
       ]);
-      setCatalog(catRes.data);
-      setRecords(recRes.data);
-      setSummary(sumRes.data);
-    } catch {}
+      // Merge API data with static fallback (API takes priority)
+      const apiCatalog: Vaccine[] = catRes.data ?? [];
+      const merged = apiCatalog.length > 0
+        ? apiCatalog
+        : STATIC_VACCINES as unknown as Vaccine[];
+      setCatalog(merged);
+      setRecords(recRes.data ?? []);
+      setSummary(sumRes.data ?? null);
+    } catch {
+      // API unavailable — use static catalog so UI is still functional
+      setCatalog(STATIC_VACCINES as unknown as Vaccine[]);
+    }
     setLoading(false);
   }
 
@@ -193,22 +233,22 @@ export default function VacinasPage() {
   }
 
   if (loading) return (
-    <div className="min-h-screen bg-[#FFF8F8] flex items-center justify-center">
-      <div className="text-slate-400">Carregando carteira de vacinação...</div>
-    </div>
+    <AppLayout>
+      <div className="flex items-center justify-center h-64">
+        <div className="text-slate-400">Carregando carteira de vacinação...</div>
+      </div>
+    </AppLayout>
   );
 
   return (
-    <div className="min-h-screen bg-[#FFF8F8]">
+    <AppLayout>
+    <div className="bg-[#FFF8F8] min-h-screen">
       {/* Header */}
       <div className="bg-white border-b border-slate-200 px-6 py-4">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => router.back()} className="text-slate-400 hover:text-slate-600 text-xl">←</button>
-            <div>
-              <h1 className="text-xl font-bold text-slate-800">💉 Carteira de Vacinação</h1>
-              <p className="text-slate-500 text-sm">Calendário PNI + registros pessoais</p>
-            </div>
+        <div className="max-w-5xl mx-auto flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-slate-800">💉 Carteira de Vacinação</h1>
+            <p className="text-slate-500 text-sm">Calendário PNI + registros pessoais</p>
           </div>
           <button onClick={() => openNew()} className="btn-primary px-4 py-2 text-sm">
             + Registrar Dose
@@ -216,7 +256,7 @@ export default function VacinasPage() {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-6 py-6 space-y-6">
+      <div className="max-w-5xl mx-auto px-6 py-6 space-y-6">
 
         {/* Alertas */}
         {summary && summary.alerts.length > 0 && (
@@ -463,17 +503,13 @@ export default function VacinasPage() {
               <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 text-xl">✕</button>
             </div>
             <div className="p-6 space-y-4">
-              {/* Vacina */}
-              <div>
-                <label className="label">Vacina *</label>
-                <select className="input-field" value={form.vaccineId}
-                  onChange={e => setForm(f => ({ ...f, vaccineId: e.target.value }))} disabled={!!editing}>
-                  <option value="">Selecione a vacina...</option>
-                  {catalog.map(v => (
-                    <option key={v.id} value={v.id}>{v.name}{v.tradeName ? ` (${v.tradeName})` : ''}</option>
-                  ))}
-                </select>
-              </div>
+              {/* Vacina — searchable combobox */}
+              <VaccineCombobox
+                catalog={catalog}
+                value={form.vaccineId}
+                onChange={id => setForm(f => ({ ...f, vaccineId: id }))}
+                disabled={!!editing}
+              />
 
               {/* Dose + Status */}
               <div className="grid grid-cols-2 gap-3">
@@ -557,6 +593,92 @@ export default function VacinasPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+    </AppLayout>
+  );
+}
+
+// ── VaccineCombobox ───────────────────────────────────────────────────────────
+function VaccineCombobox({
+  catalog, value, onChange, disabled,
+}: {
+  catalog: Vaccine[];
+  value: string;
+  onChange: (id: string) => void;
+  disabled?: boolean;
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const selected = catalog.find(v => v.id === value);
+
+  const filtered = query.trim()
+    ? catalog.filter(v =>
+        v.name.toLowerCase().includes(query.toLowerCase()) ||
+        (v.tradeName ?? '').toLowerCase().includes(query.toLowerCase()) ||
+        v.diseases.some(d => d.toLowerCase().includes(query.toLowerCase()))
+      )
+    : catalog;
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  function select(v: Vaccine) {
+    onChange(v.id);
+    setQuery(v.name + (v.tradeName ? ` (${v.tradeName})` : ''));
+    setOpen(false);
+  }
+
+  function handleFocus() {
+    if (!disabled) {
+      setOpen(true);
+      if (selected) setQuery(''); // clear so user can type new search
+    }
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <label className="label">Vacina *</label>
+      <input
+        type="text"
+        className="input-field"
+        placeholder="Digite para buscar vacina..."
+        value={open ? query : (selected ? selected.name + (selected.tradeName ? ` (${selected.tradeName})` : '') : query)}
+        onFocus={handleFocus}
+        onChange={e => { setQuery(e.target.value); setOpen(true); onChange(''); }}
+        disabled={disabled}
+        autoComplete="off"
+      />
+      {open && filtered.length > 0 && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-56 overflow-y-auto">
+          {filtered.map(v => (
+            <button
+              key={v.id}
+              type="button"
+              onMouseDown={() => select(v)}
+              className="w-full text-left px-4 py-2.5 hover:bg-slate-50 text-sm border-b border-slate-50 last:border-0"
+            >
+              <span className="font-medium text-slate-800">{v.name}</span>
+              {v.tradeName && <span className="text-slate-400 ml-1">({v.tradeName})</span>}
+              <span className="text-xs text-slate-400 ml-2">{v.diseases.slice(0, 2).join(', ')}</span>
+              <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${v.calendar === 'PNI' ? 'bg-green-100 text-green-700' : v.calendar === 'Recomendada' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
+                {v.calendar}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+      {open && query.trim() !== '' && filtered.length === 0 && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg px-4 py-3 text-sm text-slate-400">
+          Nenhuma vacina encontrada para "{query}"
         </div>
       )}
     </div>

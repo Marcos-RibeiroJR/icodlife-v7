@@ -32,8 +32,7 @@ export default function LoginPage() {
         <div className="absolute inset-0 opacity-10"
           style={{ backgroundImage: 'radial-gradient(circle at 30% 50%, #FCA5A5 0%, transparent 60%)' }} />
         <div className="relative z-10 text-center max-w-sm">
-          <div className="text-7xl mb-8">🩺</div>
-          <h1 className="text-white text-4xl font-bold tracking-tight mb-4">IcodLife</h1>
+          <img src="/logo.svg" alt="IcodLife" className="h-14 w-auto mx-auto mb-8" />
           <p className="text-white/60 text-lg">
             Sua saúde, seus dados, seu controle.
           </p>
@@ -58,8 +57,7 @@ export default function LoginPage() {
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="w-full max-w-md">
           <div className="lg:hidden text-center mb-8">
-            <div className="text-5xl mb-3">🩺</div>
-            <h1 className="text-2xl font-bold text-[#7B1E1E]">IcodLife</h1>
+            <img src="/logo-dark.svg" alt="IcodLife" className="h-11 w-auto mx-auto" />
           </div>
 
           <h2 className="text-2xl font-bold text-slate-800 mb-2">Bem-vindo de volta</h2>
