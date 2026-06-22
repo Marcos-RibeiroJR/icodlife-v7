@@ -41,7 +41,7 @@ export class ShareService {
       where: { id: t.userId },
       select: {
         fullName: true,
-        birthDate: true,
+        dateOfBirth: true,
         gender: true,
         bloodType: true,
         allergies: true,
@@ -55,21 +55,25 @@ export class ShareService {
     const payload: any = { token: t, user };
 
     if (t.accessLevel === 'full' || t.accessLevel === 'custom') {
-      // Recent exam results (last 10)
+      // Recent exam results with items (last 10)
       const exams = await this.prisma.examResult.findMany({
         where: { userId: t.userId },
         orderBy: { examDate: 'desc' },
         take: 10,
         select: {
           id: true, examType: true, examDate: true,
-          results: true, normalRangeMin: true, normalRangeMax: true, unit: true,
+          aiRiskLevel: true,
+          items: {
+            select: { marker: true, value: true, unit: true, refMin: true, refMax: true },
+            take: 5,
+          },
         },
       });
 
       // Active medications
       const medications = await this.prisma.medication.findMany({
         where: { userId: t.userId, isActive: true },
-        select: { name: true, dosage: true, frequency: true, condition: true },
+        select: { name: true, dosage: true, frequency: true, notes: true },
       });
 
       // Last 5 BP readings

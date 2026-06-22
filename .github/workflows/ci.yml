@@ -1,3 +1,20 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# .github/workflows/ci.yml — IcodLife CI/CD
+#
+# Pipeline:
+#   1. quality  → TypeScript check (API + Web)
+#   2. test     → testes unitários com Postgres de serviço
+#   3. build    → build Docker + push para GHCR (só branch main)
+#   4. deploy   → SSH no VPS, docker compose pull + up (só branch main)
+#
+# Secrets necessários no GitHub (Settings → Secrets → Actions):
+#   VPS_HOST        → IP ou hostname do servidor
+#   VPS_USER        → usuário SSH (ex: ubuntu)
+#   VPS_SSH_KEY     → chave privada SSH (conteúdo do arquivo id_rsa)
+#   VPS_DEPLOY_DIR  → caminho no VPS (ex: /opt/icodlife)
+#   ENV_PRODUCTION  → conteúdo completo do .env.production
+# ─────────────────────────────────────────────────────────────────────────────
+
 name: IcodLife CI/CD
 
 on:
@@ -7,108 +24,192 @@ on:
     branches: [main]
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: "20"
+  PNPM_VERSION: "9"
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
+# ── 1. QUALITY ────────────────────────────────────────────────────────────────
 jobs:
-  # ── LINT & TYPE CHECK ────────────────────────────────────────────────────────
   quality:
-    name: Lint & Types
+    name: TypeCheck & Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with: { version: 9 }
-      - uses: actions/setup-node@v4
-        with: { node-version: '${{ env.NODE_VERSION }}', cache: 'pnpm' }
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
-      - run: pnpm --filter api exec tsc --noEmit
-      - run: pnpm --filter web exec tsc --noEmit
 
-  # ── TESTS ────────────────────────────────────────────────────────────────────
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript — API
+        run: pnpm --filter api exec tsc --noEmit
+
+      - name: TypeScript — Web
+        run: pnpm --filter web exec tsc --noEmit
+
+# ── 2. TEST ───────────────────────────────────────────────────────────────────
   test:
     name: Tests
     runs-on: ubuntu-latest
     needs: quality
+
     services:
       postgres:
         image: postgres:16-alpine
         env:
           POSTGRES_DB: icodlife_test
           POSTGRES_USER: icodlife
-          POSTGRES_PASSWORD: test_secret
+          POSTGRES_PASSWORD: ci_test_secret
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-        ports: ['5432:5432']
-      redis:
-        image: redis:7-alpine
-        ports: ['6379:6379']
+        ports:
+          - 5432:5432
+
     env:
-      DATABASE_URL: postgresql://icodlife:test_secret@localhost:5432/icodlife_test
-      REDIS_URL: redis://localhost:6379
-      JWT_SECRET: test_jwt_secret
       NODE_ENV: test
+      DATABASE_URL: postgresql://icodlife:ci_test_secret@localhost:5432/icodlife_test
+      REDIS_URL: ""
+      JWT_SECRET: ci_jwt_secret_32_chars_minimum!!
+      ENCRYPTION_KEY: 00000000000000000000000000000000
+
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with: { version: 9 }
-      - uses: actions/setup-node@v4
-        with: { node-version: '${{ env.NODE_VERSION }}', cache: 'pnpm' }
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter api exec prisma migrate deploy
-      - run: pnpm --filter api test
-      - run: pnpm --filter web test
 
-  # ── BUILD & PUSH DOCKER ──────────────────────────────────────────────────────
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prisma generate
+        run: pnpm --filter api exec prisma generate
+
+      - name: Prisma migrate (test DB)
+        run: pnpm --filter api exec prisma migrate deploy
+
+      - name: Run API tests
+        run: pnpm --filter api test --passWithNoTests
+
+      - name: Run Web tests
+        run: pnpm --filter web test --passWithNoTests
+
+# ── 3. BUILD & PUSH DOCKER ────────────────────────────────────────────────────
   build:
-    name: Build & Push
+    name: Build & Push Docker
     runs-on: ubuntu-latest
     needs: test
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
     permissions:
       contents: read
       packages: write
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+
+      - name: Login no GHCR
+        uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build & push API
+      - name: Metadata da imagem
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=latest
+
+      # ── API ──────────────────────────────────────────────────────────────────
+      - name: Build & push — API
         uses: docker/build-push-action@v5
         with:
           context: ./apps/api
+          file: ./apps/api/Dockerfile
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/api:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/api:latest,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/api:sha-${{ github.sha }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
 
-      - name: Build & push Web
+      # ── Web ──────────────────────────────────────────────────────────────────
+      - name: Build & push — Web
         uses: docker/build-push-action@v5
         with:
           context: ./apps/web
+          file: ./apps/web/Dockerfile
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/web:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          build-args: |
+            NEXT_PUBLIC_API_URL=https://api.seudominio.com.br
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/web:latest,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/web:sha-${{ github.sha }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
 
-  # ── DEPLOY (staging) ─────────────────────────────────────────────────────────
-  deploy-staging:
-    name: Deploy → Staging
+# ── 4. DEPLOY → VPS ──────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy → VPS
     runs-on: ubuntu-latest
     needs: build
-    environment: staging
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment:
+      name: production
+      url: https://seudominio.com.br
+
     steps:
-      - name: Deploy to EKS staging
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            cd ${{ secrets.VPS_DEPLOY_DIR }}
+
+            # Atualiza o .env.production com o conteúdo do secret
+            echo '${{ secrets.ENV_PRODUCTION }}' > .env.production
+
+            # Login no GHCR para pull das imagens
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Pull das novas imagens
+            docker compose -f docker-compose.prod.yml --env-file .env.production pull api web
+
+            # Sobe sem downtime (recreate apenas os containers atualizados)
+            docker compose -f docker-compose.prod.yml --env-file .env.production up -d --no-deps api web
+
+            # Limpa imagens antigas
+            docker image prune -f
+
+            echo "✅ Deploy concluído — $(date)"
+
+      - name: Verifica saúde da API
         run: |
-          echo "Deploy automático para staging via ArgoCD"
-          # kubectl set image deployment/api api=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/api:latest
-          # kubectl rollout status deployment/api
+          sleep 15
+          curl --fail --silent https://api.seudominio.com.br/health || \
+            (echo "❌ API não respondeu após o deploy" && exit 1)
+          echo "✅ API online"

@@ -30,10 +30,17 @@ async function bootstrap() {
     transformOptions: { enableImplicitConversion: true },
   }));
 
-  // Global prefix
-  app.setGlobalPrefix('api/v1');
+  // Global prefix (exceto /health)
+  app.setGlobalPrefix('api/v1', { exclude: ['health'] });
 
-  await app.listen(process.env.PORT || 3001);
-  console.log(`🚀 IcodLife API rodando em: ${await app.getUrl()}`);
+  // Health check — usado pelo Docker HEALTHCHECK e CI/CD
+  const httpAdapter = app.getHttpAdapter();
+  httpAdapter.get('/health', (_req: any, res: any) => {
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
+  const port = process.env.PORT || 3001;
+  await app.listen(port);
+  console.log(`🚀 IcodLife API rodando na porta ${port}`);
 }
 bootstrap();

@@ -2,7 +2,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { MongooseModule } from '@nestjs/mongoose';
+// MongooseModule removido — nenhum módulo usa Mongoose (tudo via Prisma/PostgreSQL)
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { FamilyModule } from './modules/family/family.module';
@@ -27,7 +27,6 @@ import { AuditModule } from './common/audit/audit.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }]),
-    MongooseModule.forRoot(process.env.MONGODB_URI!),
     PrismaModule,
     RedisModule,
     AuditModule,

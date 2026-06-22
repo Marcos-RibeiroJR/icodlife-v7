@@ -52,8 +52,8 @@ export default function ShareViewPage() {
   const { user, token: tokenInfo, exams, medications, bpReadings } = data;
   const isFullAccess = tokenInfo?.accessLevel === 'full' || tokenInfo?.accessLevel === 'custom';
   const expiresAt = tokenInfo?.expiresAt ? new Date(tokenInfo.expiresAt) : null;
-  const age = user?.birthDate
-    ? Math.floor((Date.now() - new Date(user.birthDate).getTime()) / (1000 * 60 * 60 * 24 * 365.25))
+  const age = user?.dateOfBirth
+    ? Math.floor((Date.now() - new Date(user.dateOfBirth).getTime()) / (1000 * 60 * 60 * 24 * 365.25))
     : null;
 
   return (
@@ -184,7 +184,7 @@ export default function ShareViewPage() {
                   <span className="text-xl">💊</span>
                   <div>
                     <div className="font-semibold text-slate-800 text-sm">{m.name}</div>
-                    <div className="text-xs text-slate-500">{m.dosage} · {m.frequency}{m.condition ? ` · ${m.condition}` : ''}</div>
+                    <div className="text-xs text-slate-500">{m.dosage} · {typeof m.frequency === 'object' ? JSON.stringify(m.frequency) : m.frequency}{m.notes ? ` · ${m.notes}` : ''}</div>
                   </div>
                 </div>
               ))}
@@ -196,38 +196,40 @@ export default function ShareViewPage() {
         {isFullAccess && exams?.length > 0 && (
           <div className="bg-white rounded-2xl shadow-sm p-6">
             <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-4">Exames Recentes</h2>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-xs text-slate-400 border-b border-slate-100">
-                    <th className="pb-2">Exame</th>
-                    <th className="pb-2">Resultado</th>
-                    <th className="pb-2">Data</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {exams.map((e: any) => {
-                    const val = typeof e.results === 'object' ? JSON.stringify(e.results) : String(e.results ?? '—');
-                    const inRange = e.normalRangeMin != null && e.normalRangeMax != null
-                      ? (Number(e.results) >= e.normalRangeMin && Number(e.results) <= e.normalRangeMax)
-                      : null;
-                    return (
-                      <tr key={e.id}>
-                        <td className="py-2 font-medium text-slate-700">{e.examType}</td>
-                        <td className="py-2">
-                          <span className={`font-semibold ${inRange === false ? 'text-red-600' : 'text-slate-700'}`}>
-                            {val} {e.unit || ''}
-                          </span>
-                          {inRange === false && <span className="ml-1 text-xs text-red-500">⚠️</span>}
-                        </td>
-                        <td className="py-2 text-slate-400">
-                          {e.examDate ? new Date(e.examDate).toLocaleDateString('pt-BR') : '—'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="space-y-3">
+              {exams.map((e: any) => (
+                <div key={e.id} className="bg-slate-50 rounded-xl p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold text-slate-700">{e.examType}</span>
+                    <div className="flex items-center gap-2">
+                      {e.aiRiskLevel === 'critical' && <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">⚠️ Crítico</span>}
+                      {e.aiRiskLevel === 'warning' && <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">⚡ Atenção</span>}
+                      <span className="text-xs text-slate-400">{e.examDate ? new Date(e.examDate).toLocaleDateString('pt-BR') : '—'}</span>
+                    </div>
+                  </div>
+                  {e.items?.length > 0 && (
+                    <div className="space-y-1">
+                      {e.items.map((item: any, idx: number) => {
+                        const val = Number(item.value);
+                        const outOfRange = item.refMin != null && item.refMax != null
+                          ? (val < Number(item.refMin) || val > Number(item.refMax)) : false;
+                        return (
+                          <div key={idx} className="flex items-center gap-2 text-xs">
+                            <span className="text-slate-500 w-32 truncate">{item.marker}</span>
+                            <span className={`font-semibold ${outOfRange ? 'text-red-600' : 'text-slate-700'}`}>
+                              {item.value} {item.unit || ''}
+                            </span>
+                            {outOfRange && <span className="text-red-400">↑↓</span>}
+                            {item.refMin != null && item.refMax != null && (
+                              <span className="text-slate-300">({item.refMin}–{item.refMax})</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         )}
