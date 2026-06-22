@@ -104,8 +104,17 @@ jobs:
       - name: Prisma migrate (test DB)
         run: pnpm --filter api exec prisma migrate deploy
 
-      - name: Run API tests
+      - name: Run API unit tests
         run: pnpm --filter api test --passWithNoTests
+
+      - name: Run API E2E tests
+        run: pnpm --filter api test:e2e
+        env:
+          DATABASE_URL: postgresql://icodlife:ci_test_secret@localhost:5432/icodlife_test
+          JWT_SECRET: ci_jwt_secret_32_chars_minimum!!
+          ENCRYPTION_KEY: 00000000000000000000000000000000
+          REDIS_URL: ""
+          NODE_ENV: test
 
       - name: Run Web tests
         run: pnpm --filter web test --passWithNoTests
