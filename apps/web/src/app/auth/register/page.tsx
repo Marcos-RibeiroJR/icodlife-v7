@@ -64,6 +64,12 @@ export default function RegisterPage() {
     if (form.password !== form.confirmPassword) {
       setError("As senhas não coincidem."); return;
     }
+    // Validação de senha no frontend antes de enviar
+    const pwRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/;
+    if (!pwRegex.test(form.password)) {
+      setError("A senha precisa ter: letra maiúscula, minúscula, número e símbolo (@$!%*?&). Ex: Marcos@123");
+      return;
+    }
     setLoading(true); setError("");
     try {
       const { confirmPassword: _, ...payload } = form;
@@ -76,7 +82,9 @@ export default function RegisterPage() {
       if (res.data?.icode) setGeneratedIcode(res.data.icode);
       setStep("done");
     } catch(e: any) {
-      setError(e.response?.data?.message || "Erro ao cadastrar. Tente novamente.");
+      const msg = e.response?.data?.message;
+      // class-validator retorna array de mensagens
+      setError(Array.isArray(msg) ? msg.join(" | ") : (msg || "Erro ao cadastrar. Tente novamente."));
     } finally { setLoading(false); }
   };
 

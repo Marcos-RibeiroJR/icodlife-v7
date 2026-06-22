@@ -14,6 +14,7 @@ import { MedicationsModule } from './modules/medications/medications.module';
 import { AppointmentsModule } from './modules/appointments/appointments.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { OphthalmologyModule } from './modules/ophthalmology/ophthalmology.module';
+import { BloodPressureModule } from './modules/blood-pressure/blood-pressure.module';
 import { OccupationalHealthModule } from './modules/occupational-health/occupational-health.module';
 // v7
 import { ExamResultsModule } from './modules/exam-results/exam-results.module';
@@ -46,6 +47,7 @@ import { AuditModule } from './common/audit/audit.module';
     // ── v7 — Novos módulos ─────────────────────────────────────────
     ExamResultsModule,
     LifestyleModule,
+    BloodPressureModule,
   ],
 })
 export class AppModule {}

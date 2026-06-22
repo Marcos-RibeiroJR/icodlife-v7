@@ -155,3 +155,13 @@ export const lifestyleApi = {
   upsert:  (data: any) => api.post('/lifestyle', data),
   history: () => api.get('/lifestyle/history'),
 };
+
+// ── v7 — Blood Pressure Map ─────────────────────────────────────────────────
+export const bloodPressureApi = {
+  list:     (days?: number) => api.get('/blood-pressure', { params: { days } }),
+  create:   (data: any)     => api.post('/blood-pressure', data),
+  delete:   (id: string)    => api.delete(`/blood-pressure/${id}`),
+  analyze:  (days?: number) => api.get('/blood-pressure/analyze', { params: { days } }),
+  classify: (systolic: number, diastolic: number) =>
+    api.get('/blood-pressure/classify', { params: { systolic, diastolic } }),
+};

@@ -15,9 +15,13 @@ export interface ChatMessage {
 // Perguntas periódicas de saúde por categoria
 const DAILY_HEALTH_QUESTIONS = {
   sleep: [
-    'Como foi o seu sono esta noite? Dormiu bem?',
+    'Como foi o seu sono esta noite? Dormiu bem? 😴',
     'Quantas horas de sono você teve?',
     'Acordou durante a noite?',
+  ],
+  bloodpressure: [
+    'Fez alguma aferição de pressão arterial hoje? Se sim, qual foi o resultado?',
+    'Sentiu alguma dor de cabeça, tontura ou batimento acelerado hoje?',
   ],
   pain: [
     'Está sentindo alguma dor hoje?',
@@ -31,6 +35,11 @@ const DAILY_HEALTH_QUESTIONS = {
   mood: [
     'Como está seu humor hoje?',
     'Sentiu ansiedade ou tristeza?',
+  ],
+  lifestyle: [
+    'Comeu alguma refeição pesada hoje (churrasco, fritura, muito sal)? 🥩',
+    'Consumiu bebidas alcoólicas hoje? 🍺',
+    'Tomou muito café ou energético? ☕',
   ],
   symptoms: [
     'Teve algum sintoma incomum hoje? (dor de cabeça, tontura, náusea...)',
@@ -113,10 +122,18 @@ export class AiChatService {
       session = newSession;
     }
 
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { fullName: true, gender: true, chronicConditions: true },
-    });
+    const [user, recentBp] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { fullName: true, gender: true, chronicConditions: true },
+      }),
+      // Últimas 3 medições de PA para contexto
+      (this.prisma as any).bloodPressureReading?.findMany({
+        where: { userId, measuredAt: { gte: new Date(Date.now() - 7 * 86_400_000) } },
+        orderBy: { measuredAt: 'desc' },
+        take: 3,
+      }).catch(() => []),
+    ]);
 
     const messages = (session.messages as unknown as ChatMessage[]) || [];
 
@@ -128,10 +145,10 @@ export class AiChatService {
     };
     messages.push(userMsg);
 
-    // Gerar resposta da IA
+    // Gerar resposta da IA (com contexto BP)
     const aiResponse = await this.generateAiResponse(
       messages,
-      user!,
+      { ...user!, recentBp: recentBp ?? [] },
       session
     );
 
@@ -234,7 +251,26 @@ export class AiChatService {
     if (text.includes('dor intensa') || text.includes('dor forte')) flags.push('severe_pain');
     if (text.includes('não dormi') || text.includes('insônia')) flags.push('sleep_issue');
 
-    const summaryParts = [`Olá ${user.fullName.split(' ')[0]}! Aqui está um resumo da sua saúde hoje:`];
+    // ── Detecção de fatores de PA na conversa ───────────────────────────────
+    const drankAlcohol = /álcool|cerveja|vinho|bebida|drink/i.test(text);
+    const hadHeavyMeal = /churrasco|fritura|salgado|gorduroso|pizza|hamburguer/i.test(text);
+    const hadPoorSleep = /não dormi|dormi mal|insônia|acordei|pesadelo/i.test(text);
+    const hadHighStress= /estressad|ansios|nervos|pressão no trabalho|preocupad/i.test(text);
+    const hadCaffeine  = /café|energético|cafeína/i.test(text);
+    const headacheOrDizz = /dor de cabeça|cefaleia|tontura|cabeça doend/i.test(text);
+
+    const bpFactors: string[] = [];
+    if (drankAlcohol)  bpFactors.push('🍺 Consumo de álcool');
+    if (hadHeavyMeal)  bpFactors.push('🥩 Refeição pesada/gordurosa');
+    if (hadPoorSleep)  bpFactors.push('😴 Sono insuficiente');
+    if (hadHighStress) bpFactors.push('😰 Estresse elevado');
+    if (hadCaffeine)   bpFactors.push('☕ Excesso de cafeína');
+
+    if (bpFactors.length > 0) flags.push('bp_risk_factors');
+    if (headacheOrDizz) flags.push('bp_symptom');
+
+    const firstName = user.fullName.split(' ')[0];
+    const summaryParts = [`Olá ${firstName}! Aqui está um resumo da sua saúde hoje:`];
 
     if (sentimentScore > 0.3) {
       summaryParts.push('Você parece estar bem hoje! Continue assim. 💪');
@@ -248,7 +284,27 @@ export class AiChatService {
       summaryParts.push('\n⚠️ Pontos de atenção identificados:');
       if (flags.includes('possible_illness')) summaryParts.push('• Sintomas que podem indicar mal-estar. Fique de olho!');
       if (flags.includes('severe_pain')) summaryParts.push('• Dor intensa relatada. Recomendamos avaliação médica.');
-      if (flags.includes('sleep_issue')) summaryParts.push('• Problema de sono detectado. O sono é essencial para a saúde!');
+      if (flags.includes('sleep_issue') || hadPoorSleep) summaryParts.push('• Sono ruim detectado — isso pode elevar a pressão arterial.');
+    }
+
+    // ── Insight de pressão arterial ────────────────────────────────────────
+    if (bpFactors.length > 0) {
+      summaryParts.push(`\n❤️ Fatores identificados que podem influenciar sua pressão arterial:`);
+      bpFactors.forEach(f => summaryParts.push(`   ${f}`));
+      summaryParts.push('👉 Recomendo registrar sua pressão no Mapa de PA do IcodLife para acompanhar o impacto desses fatores.');
+    }
+
+    if (headacheOrDizz) {
+      summaryParts.push('\n🩺 Você mencionou dor de cabeça ou tontura — esses sintomas podem estar relacionados à pressão arterial. Considere aferir sua PA agora e registrar no Mapa de PA.');
+    }
+
+    if (user.recentBp?.length) {
+      const last = user.recentBp[0];
+      if (last.classification === 'hipertensao2' || last.classification === 'crise') {
+        summaryParts.push(`\n🔴 Lembrete: sua última medição de PA foi ${last.systolic}/${last.diastolic} mmHg (${last.classification}). Monitoramento frequente é importante.`);
+      } else if (last.classification === 'hipertensao1') {
+        summaryParts.push(`\n🟠 Sua PA recente (${last.systolic}/${last.diastolic}) está no limiar — os fatores do dia de hoje podem influenciar. Fique atento.`);
+      }
     }
 
     summaryParts.push('\nSuas informações foram salvas no seu prontuário IcodLife. Até amanhã! 🌟');
@@ -272,10 +328,20 @@ export class AiChatService {
   }
 
   private buildSystemPrompt(user: any): string {
+    let bpContext = '';
+    if (user.recentBp?.length) {
+      const last = user.recentBp[0];
+      bpContext = `\nÚltima pressão arterial registrada: ${last.systolic}/${last.diastolic} mmHg (${last.classification}) em ${new Date(last.measuredAt).toLocaleDateString('pt-BR')}.`;
+      if (user.recentBp.length >= 2) {
+        const avg = Math.round(user.recentBp.reduce((s: number, r: any) => s + r.systolic, 0) / user.recentBp.length);
+        bpContext += ` Média sistólica recente: ${avg} mmHg.`;
+      }
+    }
+
     return `Você é o HealthBot do IcodLife, um assistente de saúde empático e profissional.
-    
+
 Usuário: ${user.fullName}, gênero: ${user.gender}
-Condições conhecidas: ${user.chronicConditions?.join(', ') || 'nenhuma'}
+Condições conhecidas: ${user.chronicConditions?.join(', ') || 'nenhuma'}${bpContext}
 
 Regras:
 - Faça UMA pergunta por vez, de forma natural e empática
@@ -283,7 +349,9 @@ Regras:
 - NUNCA faça diagnósticos médicos
 - Se detectar sintomas graves, recomende buscar atendimento médico
 - Registre informações de forma estruturada para o prontuário
-- Para usuárias femininas, inclua perguntas sobre saúde feminina quando relevante`;
+- Para usuárias femininas, inclua perguntas sobre saúde feminina quando relevante
+- Se o usuário mencionar sono ruim, álcool, estresse ou refeição pesada, mencione o impacto potencial na pressão arterial
+- Se a pressão recente estiver elevada (≥130/80), personalize as perguntas sobre fatores de risco`;
   }
 
   private personalizeQuestion(question: string, lastResponse: string, user: any): string {

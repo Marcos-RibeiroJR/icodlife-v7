@@ -187,6 +187,7 @@ model User {
   examResults           ExamResult[]
   lifestyleProfile      LifestyleProfile?
   lifestyleSnapshots    LifestyleSnapshot[]
+  bloodPressureReadings BloodPressureReading[]
 
   @@map("users")
 }
@@ -680,6 +681,123 @@ model OphthalmologyExam {
   astigmatismLeft        Boolean?                @map("astigmatism_left")
   astigmatismAxisRight   Int?                    @map("astigmatism_axis_right")
   astigmatismAxisLeft    Int?                    @map("astigmatism_axis_left")
+  contrastScoreRight     Decimal?                @map("contrast_score_right")
+  contrastScoreLeft      Decimal?                @map("contrast_score_left")
+  estimatedMyopiaRight   Decimal?                @map("estimated_myopia_right")
+  estimatedMyopiaLeft    Decimal?                @map("estimated_myopia_left")
+  estimatedAstigRight    Decimal?                @map("estimated_astig_right")
+  estimatedAstigLeft     Decimal?                @map("estimated_astig_left")
+  confidenceScore        Decimal?                @map("confidence_score")
+  riskLevel              RefractionRisk          @default(none) @map("risk_level")
+  reportSummary          String?                 @db.Text @map("report_summary")
+  recommendations        String[]
+  symptoms               String[]
+  userAge                Int?                    @map("user_age")
+  completedAt            DateTime?               @map("completed_at")
+  createdAt              DateTime                @default(now()) @map("created_at")
+  updatedAt              DateTime                @updatedAt     @map("updated_at")
+
+  @@index([userId, createdAt])
+  @@map("ophthalmology_exams")
+}
+
+model OphthalmologyHistory {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  examId          String?  @map("exam_id")
+  doctorName      String?  @map("doctor_name")
+  crmNumber       String?  @map("crm_number")
+  sphericalRight  Decimal? @map("spherical_right")
+  sphericalLeft   Decimal? @map("spherical_left")
+  cylinderRight   Decimal? @map("cylinder_right")
+  cylinderLeft    Decimal? @map("cylinder_left")
+  axisRight       Int?     @map("axis_right")
+  axisLeft        Int?     @map("axis_left")
+  additionRight   Decimal? @map("addition_right")
+  additionLeft    Decimal? @map("addition_left")
+  diagnoses       String[]
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt     @map("updated_at")
+
+  @@index([userId, createdAt])
+  @@map("ophthalmology_history")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Mapa de Pressão Arterial — Sprint 5
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum BpClassification {
+  normal
+  elevado
+  hipertensao1
+  hipertensao2
+  crise
+}
+
+enum SleepQuality {
+  boa
+  regular
+  ruim
+  insonia
+}
+
+enum PhysicalActivityBp {
+  nenhuma
+  leve
+  moderada
+  intensa
+}
+
+enum StressLevel {
+  baixo
+  moderado
+  alto
+}
+
+model BloodPressureReading {
+  id            String          @id @default(uuid())
+  userId        String          @map("user_id")
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  systolic      Int
+  diastolic     Int
+  pulse         Int?
+  measuredAt    DateTime        @map("measured_at")
+  arm           String?
+
+  classification BpClassification @default(normal)
+
+  sleepQuality      SleepQuality?      @map("sleep_quality")
+  alcoholConsumed   Boolean?           @default(false) @map("alcohol_consumed")
+  heavyMeal         Boolean?           @default(false) @map("heavy_meal")
+  highSodium        Boolean?           @default(false) @map("high_sodium")
+  physicalActivity  PhysicalActivityBp? @map("physical_activity")
+  stressLevel       StressLevel?       @map("stress_level")
+  caffeine          Boolean?           @default(false)
+  tookMedication    Boolean?           @default(false) @map("took_medication")
+  headache          Boolean?           @default(false)
+  dizziness         Boolean?           @default(false)
+  smoking           Boolean?           @default(false)
+  notes             String?            @db.Text
+
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+
+  @@index([userId, measuredAt])
+  @@map("blood_pressure_readings")
+}
+an?         @default(false)
+  notes             String?          @db.Text
+
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+
+  @@index([userId, measuredAt])
+  @@map("blood_pressure_readings")
+}               @map("astigmatism_axis_left")
   contrastScoreRight     Decimal?                @map("contrast_score_right")
   contrastScoreLeft      Decimal?                @map("contrast_score_left")
   estimatedMyopiaRight   Decimal?                @map("estimated_myopia_right")

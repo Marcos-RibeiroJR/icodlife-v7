@@ -74,9 +74,10 @@ async function main() {
 
   const userMale = await prisma.user.upsert({
     where: { email: 'joao@demo.icodlife.com' },
-    update: {},
+    update: { passwordHash: pwdHash, status: 'active', emailVerifiedAt: new Date() },
     create: {
       email:          'joao@demo.icodlife.com',
+      passwordHash:   pwdHash,
       fullName:       'João Carlos Silva',
       dateOfBirth:    new Date('1985-03-15'),
       gender:         'male',
@@ -97,9 +98,10 @@ async function main() {
   // ── USUÁRIO DEMO FEMININO ───────────────────────────────────────────────────
   const userFemale = await prisma.user.upsert({
     where: { email: 'ana@demo.icodlife.com' },
-    update: {},
+    update: { passwordHash: pwdHash, status: 'active', emailVerifiedAt: new Date() },
     create: {
       email:          'ana@demo.icodlife.com',
+      passwordHash:   pwdHash,
       fullName:       'Ana Paula Rodrigues',
       dateOfBirth:    new Date('1992-07-22'),
       gender:         'female',

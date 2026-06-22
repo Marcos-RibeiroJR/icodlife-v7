@@ -17,6 +17,7 @@ const NAV_MAIN = [
 
 const NAV_VIDA = [
   { href: '/vida',                icon: '🫀', label: 'Módulo Vida' },
+  { href: '/vida/pressao',        icon: '❤️',  label: 'Pressão Arterial' },
   { href: '/trend-report',        icon: '📋', label: 'Laudo de Tendência' },
 ];
 
