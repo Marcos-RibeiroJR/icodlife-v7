@@ -34,6 +34,7 @@ const NAV_SPECIALTIES = [
 ];
 
 const NAV_BOTTOM = [
+  { href: '/notificacoes',        icon: '🔔', label: 'Notificações' },
   { href: '/profile',             icon: '👤', label: 'Meu Perfil' },
   { href: '/access-management',  icon: '🔒', label: 'Acessos' },
 ];
@@ -120,8 +121,4 @@ export function Sidebar() {
           className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-all text-[13px]">
           <span>🚪</span> Sair
         </button>
-        <div className="text-center text-white/20 text-[10px] mt-2">v0.7 · LGPD compliant</div>
-      </div>
-    </aside>
-  );
-}
+        <div className="text-center text-white/20 text-

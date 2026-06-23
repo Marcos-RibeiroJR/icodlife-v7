@@ -1,6 +1,9 @@
-import { Injectable } from '@nestjs/common';
-@Injectable()
-export class NotificationService {
-  async sendFamilyInvite(data: any) { console.log('[NOTIF] Convite familiar:', data.to); return true; }
-  async sendPush(userId: string, title: string, body: string) { console.log(`[PUSH] ${userId}: ${title}`); return true; }
-}
+// apps/api/src/modules/notifications/notification.service.ts
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { PrismaService } from '../../common/prisma/prisma.service';
+
+export interface CreateNotificationDto {
+  type:   string;
+  title:  string;
+  body:   string;
+  data?:  Re
