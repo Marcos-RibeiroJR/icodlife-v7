@@ -263,6 +263,7 @@ model User {
   patientDoctors          PatientDoctor[]
   surgeries               Surgery[]
   vaccinationRecords      VaccinationRecord[]
+  bodyMetrics             BodyMetric[]
 
   @@map("users")
 }
@@ -810,26 +811,24 @@ model Vaccine {
   @@map("vaccines")
 }
 
-model VaccinationRecord {
-  id           String            @id @default(uuid())
-  userId       String            @map("user_id")
-  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  vaccineId    String            @map("vaccine_id")
-  vaccine      Vaccine           @relation(fields: [vaccineId], references: [id])
-  doseNumber   Int               @default(1) @map("dose_number")
-  status       VaccinationStatus @default(completed)
-  appliedAt    DateTime?         @map("applied_at")
-  scheduledAt  DateTime?         @map("scheduled_at")
-  lotNumber    String?           @map("lot_number")
-  location     String?
-  professional String?
-  manufacturer String?
-  nextDoseAt   DateTime?         @map("next_dose_at")
-  notes        String?           @db.Text
-  createdAt    DateTime          @default(now()) @map("created_at")
-  updatedAt    DateTime          @updatedAt @map("updated_at")
-
-  @@index([userId, vaccineId])
-  @@index([userId, appliedAt])
-  @@map("vaccination_records")
-}
+model BodyMetric {
+  id               String   @id @default(uuid())
+  userId           String   @map("user_id")
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  measuredAt       DateTime @default(now()) @map("measured_at")
+  weightKg         Decimal? @map("weight_kg")
+  heightCm         Decimal? @map("height_cm")
+  bmi              Decimal?
+  bmiCategory      String?  @map("bmi_category")
+  bodyFatPct       Decimal? @map("body_fat_pct")
+  muscleMassKg     Decimal? @map("muscle_mass_kg")
+  muscleMassPct    Decimal? @map("muscle_mass_pct")
+  visceralFatLevel Int?     @map("visceral_fat_level")
+  waterPct         Decimal? @map("water_pct")
+  boneMassKg       Decimal? @map("bone_mass_kg")
+  metabolicAge     Int?     @map("metabolic_age")
+  bmr              Int?
+  deviceType       String?  @map("device_type")
+  notes            String?  @db.Text
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime 

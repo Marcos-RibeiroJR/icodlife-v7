@@ -28,6 +28,8 @@ import { ProntuarioModule } from './modules/prontuario/prontuario.module';
 import { SurgeryModule } from './modules/surgery/surgery.module';
 // Sprint 10 — Módulo Vacinas
 import { VaccinesModule } from './modules/vaccines/vaccines.module';
+// Sprint 12 — Evolução Corporal
+import { BodyMetricsModule } from './modules/body-metrics/body-metrics.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { RedisModule } from './common/redis/redis.module';
 import { AuditModule } from './common/audit/audit.module';
@@ -43,28 +45,4 @@ import { AuditModule } from './common/audit/audit.module';
     UsersModule,
     FamilyModule,
     RecordsModule,
-    MenstrualModule,
-    AiChatModule,
-    ShareModule,
-    MedicationsModule,
-    AppointmentsModule,
-    NotificationsModule,
-    // ── Especialidades ─────────────────────────────────────────────
-    OphthalmologyModule,
-    OccupationalHealthModule,
-    // ── v7 — Novos módulos ─────────────────────────────────────────
-    ExamResultsModule,
-    LifestyleModule,
-    BloodPressureModule,
-    // ── Sprint 6 — Módulo Doutor ───────────────────────────────────
-    DoctorModule,
-    MeusMedicosModule,
-    // ── Sprint 7 — Prontuário ──────────────────────────────────────
-    ProntuarioModule,
-    // ── Sprint 8 — Cirurgia ────────────────────────────────────────
-    SurgeryModule,
-    // ── Sprint 10 — Vacinas ────────────────────────────────────────
-    VaccinesModule,
-  ],
-})
-export class AppModule {}
+    MenstrualMo
