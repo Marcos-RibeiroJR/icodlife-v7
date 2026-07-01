@@ -97,8 +97,11 @@ export class DoctorService {
         ...(dto.consultPrice  !== undefined && { consultPrice: dto.consultPrice }),
         ...(dto.addressCity   !== undefined && { addressCity: dto.addressCity }),
         ...(dto.addressState  !== undefined && { addressState: dto.addressState }),
-        ...(dto.phone         !== undefined && { phone: dto.phone }),
-        ...(dto.website       !== undefined && { website: dto.website }),
+        ...(dto.phone          !== undefined && { phone: dto.phone }),
+        ...(dto.website        !== undefined && { website: dto.website }),
+        ...(dto.languages      !== undefined && { languages: dto.languages }),
+        ...(dto.education      !== undefined && { education: dto.education }),
+        ...(dto.certifications !== undefined && { certifications: dto.certifications }),
       },
     });
   }
@@ -124,7 +127,18 @@ export class DoctorService {
     });
   }
 
-  // ── Busca pública de médicos ──────────────────────────────────────────────
+  // ── Lista especialidades disponíveis ────────────────────────────────────
+  async listSpecialties() {
+    const doctors = await this.prisma.doctor.findMany({
+      where: { crmStatus: { not: 'canceled' } },
+      select: { specialties: true },
+    });
+    const all = doctors.flatMap(d => d.specialties);
+    const unique = [...new Set(all)].sort();
+    return { specialties: unique };
+  }
+
+    // ── Busca pública de médicos ──────────────────────────────────────────────
   async search(dto: SearchDoctorsDto) {
     const { specialty, uf, healthPlan, name, page = 1, limit = 20 } = dto;
     const skip = (page - 1) * limit;
@@ -170,14 +184,72 @@ export class DoctorService {
     return doctor;
   }
 
-  // ── Lista de especialidades disponíveis ──────────────────────────────────
-  async listSpecialties() {
-    const doctors = await this.prisma.doctor.findMany({
-      where: { crmStatus: { not: 'canceled' } },
-      select: { specialties: true },
+  // ── Vincular / desvincular paciente ─────────────────────────────────────
+  async addPatient(userId: string, icode: string, specialty?: string) {
+    const doctor = await this.prisma.doctor.findUnique({ where: { userId } });
+    if (!doctor) throw new NotFoundException('Perfil de doutor não encontrado');
+
+    const patient = await this.prisma.user.findFirst({ where: { icode: icode.trim() } });
+    if (!patient) throw new NotFoundException('Usuário não encontrado com este ICODE');
+
+    const existing = await this.prisma.patientDoctor.findFirst({
+      where: { doctorId: doctor.id, userId: patient.id },
     });
-    const all = doctors.flatMap(d => d.specialties);
-    const unique = [...new Set(all)].sort();
-    return unique;
+    if (existing) {
+      if (existing.status === 'active') throw new Error('Paciente já vinculado');
+      return this.prisma.patientDoctor.update({
+        where: { id: existing.id },
+        data:  { status: 'active', specialty: specialty ?? undefined },
+      });
+    }
+
+    return this.prisma.patientDoctor.create({
+      data: { doctorId: doctor.id, userId: patient.id, specialty: specialty ?? null, status: 'active' },
+    });
+  }
+
+  async removePatient(userId: string, patientDoctorId: string) {
+    const doctor = await this.prisma.doctor.findUnique({ where: { userId } });
+    if (!doctor) throw new NotFoundException('Perfil de doutor não encontrado');
+    return this.prisma.patientDoctor.updateMany({
+      where: { id: patientDoctorId, doctorId: doctor.id },
+      data:  { status: 'ended' },
+    });
+  }
+
+  // ── Buscar usuários ICODLIFE para vincular como paciente ─────────────────
+  async searchUsers(query: string) {
+    if (!query || query.trim().length < 2) return [];
+    const q = query.trim();
+    return this.prisma.user.findMany({
+      where: {
+        status: 'active',
+        role:   { not: 'doctor' },
+        OR: [
+          { fullName: { contains: q, mode: 'insensitive' } },
+          { icode:    { contains: q, mode: 'insensitive' } },
+          { email:    { contains: q, mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true, fullName: true, email: true, icode: true, avatarUrl: true, gender: true },
+      take: 10,
+    });
+  }
+
+  // ── Listar todos os médicos ───────────────────────────────────────────────
+  async listAllDoctors(page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+    const [doctors, total] = await Promise.all([
+      this.prisma.doctor.findMany({
+        where: { crmStatus: { not: 'canceled' } },
+        skip, take: limit,
+        include: {
+          user: { select: { fullName: true, email: true, avatarUrl: true, icode: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.doctor.count({ where: { crmStatus: { not: 'canceled' } } }),
+    ]);
+    return { doctors, total, page, totalPages: Math.ceil(total / limit) };
   }
 }

@@ -1,6 +1,6 @@
 // apps/api/src/modules/doctor/doctor.controller.ts
 import {
-  Controller, Post, Get, Patch, Body, Param, Query,
+  Controller, Post, Get, Patch, Delete, Body, Param, Query,
   UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { DoctorService } from './doctor.service';
@@ -66,5 +66,25 @@ export class DoctorPanelController {
   @Get('patients')
   getPatients(@CurrentUser() user: any) {
     return this.doctorService.getPatients(user.id);
+  }
+
+  @Post('patients')
+  addPatient(@CurrentUser() user: any, @Body() body: { icode: string; specialty?: string }) {
+    return this.doctorService.addPatient(user.id, body.icode, body.specialty);
+  }
+
+  @Delete('patients/:id')
+  removePatient(@CurrentUser() user: any, @Param('id') patientId: string) {
+    return this.doctorService.removePatient(user.id, patientId);
+  }
+
+  @Get('users/search')
+  searchUsers(@Query('q') q: string) {
+    return this.doctorService.searchUsers(q ?? '');
+  }
+
+  @Get('all-doctors')
+  allDoctors(@Query('page') page = 1, @Query('limit') limit = 20) {
+    return this.doctorService.listAllDoctors(Number(page), Number(limit));
   }
 }

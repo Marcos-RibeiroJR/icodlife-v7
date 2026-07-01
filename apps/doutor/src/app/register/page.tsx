@@ -22,7 +22,7 @@ const schema = z.object({
   // Conta icodlife
   fullName:               z.string().min(3, 'Nome muito curto'),
   email:                  z.string().email('E-mail inválido'),
-  password:               z.string().min(8, 'Mínimo 8 caracteres'),
+  password:               z.string().min(8, 'Mínimo 8 caracteres').regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/, 'Precisa ter maiúscula, minúscula, número e símbolo (@$!%*?&). Ex: Demo@12345'),
   dateOfBirth:            z.string().min(1, 'Obrigatório'),
   gender:                 z.enum(['male', 'female', 'other']),
   // Perfil doutor

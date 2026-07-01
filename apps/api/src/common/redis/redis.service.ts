@@ -24,47 +24,31 @@ export class RedisService implements OnModuleDestroy {
 
     this.client.on('error', (err) => {
       // Log uma vez silenciosamente — não trava o app
-      if ((err as any).__logged) return;
-      (err as any).__logged = true;
-      this.logger.warn(`Redis indisponível (${err.message}) — cache desabilitado`);
+      if ((err as any).logged) return;
+      (err as any).logged = true;
+      this.logger.warn(`Redis error: ${err.message}`);
     });
-
-    this.client.connect().catch(() => {
-      this.logger.warn('Redis não conectou — aplicação funcionando sem cache');
-      this.client = null;
-    });
-  }
-
-  private get isAvailable(): boolean {
-    return this.client !== null && this.client.status === 'ready';
   }
 
   async get(key: string): Promise<string | null> {
-    if (!this.isAvailable) return null;
-    try { return await this.client!.get(key); } catch { return null; }
+    if (!this.client) return null;
+    try { return await this.client.get(key); } catch { return null; }
   }
 
-  async set(key: string, value: string, ttlSeconds = 0): Promise<void> {
-    if (!this.isAvailable) return;
+  async set(key: string, value: string, ttlSeconds?: number): Promise<void> {
+    if (!this.client) return;
     try {
-      if (ttlSeconds > 0) await this.client!.setex(key, ttlSeconds, value);
-      else await this.client!.set(key, value);
-    } catch { /* silencioso */ }
+      if (ttlSeconds) await this.client.setex(key, ttlSeconds, value);
+      else await this.client.set(key, value);
+    } catch { /* ignore */ }
   }
 
   async del(key: string): Promise<void> {
-    if (!this.isAvailable) return;
-    try { await this.client!.del(key); } catch { /* silencioso */ }
-  }
-
-  async exists(key: string): Promise<boolean> {
-    if (!this.isAvailable) return false;
-    try { return (await this.client!.exists(key)) === 1; } catch { return false; }
+    if (!this.client) return;
+    try { await this.client.del(key); } catch { /* ignore */ }
   }
 
   async onModuleDestroy() {
-    if (this.client) {
-      try { await this.client.quit(); } catch { /* ignora */ }
-    }
+    if (this.client) await this.client.quit().catch(() => {});
   }
 }

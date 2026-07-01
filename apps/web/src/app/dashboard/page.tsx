@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { AppLayout } from '../../components/layout/AppLayout';
 import { useAuthStore } from '../../store/auth.store';
+import { PushPermissionBanner } from '../../components/push/PushPermissionBanner';
+import { ProntuarioDownloadButton } from '../../components/prontuario/ProntuarioDownloadButton';
 import { recordsApi, medicationsApi, appointmentsApi, chatApi, examResultsApi, lifestyleApi } from '../../lib/api';
 import Link from 'next/link';
 
@@ -99,6 +101,12 @@ export default function DashboardPage() {
       </div>
 
       <div className="p-8 max-w-5xl mx-auto space-y-6">
+
+        {/* Push notification opt-in — Sprint 16 */}
+        <PushPermissionBanner authToken={(user as any)?.accessToken ?? null} />
+
+        {/* Prontuário Digital — Sprint 19 */}
+        <ProntuarioDownloadButton />
 
         {/* HealthBot CTA */}
         <Link href="/chat">

@@ -4,6 +4,7 @@
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
@@ -154,6 +155,16 @@ enum VaccinationStatus {
   skipped
 }
 
+// ── Sprint 14: Glicemia ───────────────────────────────────────────────────────
+enum GlucoseContext {
+  fasting       // jejum
+  pre_meal      // pré-refeição
+  post_meal     // pós-refeição (1-2h)
+  bedtime       // antes de dormir
+  random        // aleatório
+  post_exercise // pós-exercício
+}
+
 // ── GEOGRAPHY ─────────────────────────────────────────────────────────────────
 
 model Country {
@@ -253,6 +264,7 @@ model User {
   aiHealthChats           AiHealthChat[]
   notifications           Notification[]
   psychosocialAssessments PsychosocialAssessment[]
+  mentalHealthAssessments MentalHealthAssessment[]
   ophthalmologyExams      OphthalmologyExam[]
   ophthalmologyHistory    OphthalmologyHistory[]
   examResults             ExamResult[]
@@ -264,8 +276,38 @@ model User {
   surgeries               Surgery[]
   vaccinationRecords      VaccinationRecord[]
   bodyMetrics             BodyMetric[]
+  staffRoles              DoctorStaff[]
+  patientChatRooms        ChatRoom[]    @relation("PatientChatRooms")
+  sentMessages            ChatMessage[] @relation("SentMessages")
+  glucoseReadings         GlucoseReading[]
+  hba1cReadings           HbA1cReading[]
+  hostedRooms             TelemedicineRoom[] @relation("DoctorRooms")
+  joinedRooms             TelemedicineRoom[] @relation("PatientRooms")
+  deviceTokens            DeviceToken[]
 
   @@map("users")
+}
+
+// ── Sprint 16: Push Notifications (FCM) ───────────────────────────────────────
+enum DevicePlatform {
+  web
+  android
+  ios
+}
+
+model DeviceToken {
+  id         String         @id @default(uuid())
+  userId     String         @map("user_id")
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token      String         // FCM registration token
+  platform   DevicePlatform @default(web)
+  deviceId   String?        @map("device_id")  // fingerprint do dispositivo para evitar duplicatas
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+
+  @@unique([userId, token])
+  @@index([userId])
+  @@map("device_tokens")
 }
 
 model UserConsent {
@@ -566,8 +608,11 @@ model LifestyleProfile {
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   heightCm      Decimal? @map("height_cm")
   weightKg      Decimal? @map("weight_kg")
+  waistCm       Decimal? @map("waist_cm")
   bmi           Decimal?
   bmiCategory   String?  @map("bmi_category")
+  systolicBp    Int?     @map("systolic_bp")
+  diastolicBp   Int?     @map("diastolic_bp")
   smokingStatus String   @default("never") @map("smoking_status")
   cigarettesPerDay Int?  @map("cigarettes_per_day")
   smokingYears  Int?     @map("smoking_years")
@@ -579,10 +624,24 @@ model LifestyleProfile {
   exerciseTypes String[] @map("exercise_types")
   exerciseMinutes Int?   @map("exercise_minutes_per_session")
   sleepHoursAvg Decimal? @map("sleep_hours_avg")
-  sleepQuality  String?  @map("sleep_quality")
-  stressLevel   String?  @map("stress_level")
+  sleepQuality  Int?     @map("sleep_quality")
+  stressLevel   Int?     @map("stress_level")
+  moodAvg       Int?     @map("mood_avg")
+  mentalHealthDiagnoses String[] @map("mental_health_diagnoses")
+  therapyFrequency String? @map("therapy_frequency")
+  sexuallyActive Boolean? @map("sexually_active")
+  contraceptionType String? @map("contraception_type")
+  stdProtection  Boolean? @map("std_protection")
+  workHoursPerWeek Int?  @map("work_hours_per_week")
+  workEnvironment String? @map("work_environment")
+  ergonomicRisk  Int?    @map("ergonomic_risk")
+  occupationalChemicals Boolean? @map("occupational_chemicals")
   dietType      String?  @map("diet_type")
+  mealsPerDay   Int?     @map("meals_per_day")
   waterLitersDay Decimal? @map("water_liters_day")
+  cityName      String?  @map("city_name")
+  stateCode     String?  @map("state_code")
+  ibgeCode      String?  @map("ibge_code")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
@@ -617,6 +676,36 @@ model PsychosocialAssessment {
 
   @@index([userId, createdAt])
   @@map("psychosocial_assessments")
+}
+
+// Submódulo Saúde Mental (Medicina do Trabalho) — uma linha por aplicação de escala.
+// Genérico para qualquer escala LIVRE (GAD-7, PHQ-9, CBI, WHO-5...). Dado sensível (LGPD).
+model MentalHealthAssessment {
+  id              String    @id @default(uuid())
+  userId          String    @map("user_id")
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  scaleCode       String    @map("scale_code")      // "GAD7" | "PHQ9" | "CBI" | "WHO5" | "CONSOLIDATED"
+  category        String                            // ansiedade | depressao | burnout | estresse | sono | bem_estar
+  version         String    @default("1.0")
+
+  answers         Json
+  rawScore        Float?    @map("raw_score")
+  normalizedScore Float?    @map("normalized_score")
+  subscores       Json?
+  severity        String?
+  interpretation  String?   @db.Text                // LAUDO em texto
+
+  flags           Json?                             // { suicideRisk, crisisRisk, ... }
+  reviewedBy      String?   @map("reviewed_by")
+  reviewedAt      DateTime? @map("reviewed_at")
+
+  appliedBy       String    @default("self") @map("applied_by") // self | clinician
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@index([userId, scaleCode])
+  @@map("mental_health_assessments")
 }
 
 model OphthalmologyExam {
@@ -733,9 +822,22 @@ model Doctor {
   addressState  String?   @map("address_state")
   phone         String?
   website       String?
+  // Currículo médico
+  languages     String[]                         // idiomas falados
+  education     Json      @default("[]")         // [{institution, degree, year}]
+  certifications Json     @default("[]") @map("certifications") // [{title, issuer, year}]
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
-  patients      PatientDoctor[]
+  patients             PatientDoctor[]
+  workingHours         DoctorWorkingHours[]
+  blockedSlots         DoctorBlockedSlot[]
+  doctorAppointments   DoctorAppointment[]
+  prescriptions        DoctorPrescription[]
+  examOrders           DoctorExamOrder[]
+  asos                 Aso[]
+  staff                DoctorStaff[]
+  cashEntries          DoctorCashEntry[]
+  chatRooms            ChatRoom[]
 
   @@index([uf, crmStatus])
   @@map("doctors")
@@ -758,6 +860,11 @@ model PatientDoctor {
   createdAt    DateTime            @default(now()) @map("created_at")
   updatedAt    DateTime            @updatedAt @map("updated_at")
   appointments Appointment[]
+
+  doctorAppointments   DoctorAppointment[]
+  prescriptions        DoctorPrescription[]
+  examOrders           DoctorExamOrder[]
+  asos                 Aso[]
 
   @@unique([userId, doctorId])
   @@map("patient_doctors")
@@ -811,24 +918,256 @@ model Vaccine {
   @@map("vaccines")
 }
 
+model VaccinationRecord {
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vaccineId    String    @map("vaccine_id")
+  vaccine      Vaccine   @relation(fields: [vaccineId], references: [id])
+  doseNumber   Int       @default(1) @map("dose_number")
+  status       String    @default("completed")
+  appliedAt    DateTime? @map("applied_at")
+  scheduledAt  DateTime? @map("scheduled_at")
+  nextDoseAt   DateTime? @map("next_dose_at")
+  lotNumber    String?   @map("lot_number")
+  location     String?
+  professional String?
+  manufacturer String?
+  notes        String?   @db.Text
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("vaccination_records")
+}
+
+// ── Sprint 9-10: Evolução Corporal ────────────────────────────────────────────
 model BodyMetric {
-  id               String   @id @default(uuid())
-  userId           String   @map("user_id")
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  measuredAt       DateTime @default(now()) @map("measured_at")
-  weightKg         Decimal? @map("weight_kg")
-  heightCm         Decimal? @map("height_cm")
+  id               String    @id @default(uuid())
+  userId           String    @map("user_id")
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  measuredAt       DateTime  @default(now()) @map("measured_at")
+  weightKg         Decimal?  @map("weight_kg")
+  heightCm         Decimal?  @map("height_cm")
   bmi              Decimal?
-  bmiCategory      String?  @map("bmi_category")
-  bodyFatPct       Decimal? @map("body_fat_pct")
-  muscleMassKg     Decimal? @map("muscle_mass_kg")
-  muscleMassPct    Decimal? @map("muscle_mass_pct")
-  visceralFatLevel Int?     @map("visceral_fat_level")
-  waterPct         Decimal? @map("water_pct")
-  boneMassKg       Decimal? @map("bone_mass_kg")
-  metabolicAge     Int?     @map("metabolic_age")
+  bmiCategory      String?   @map("bmi_category")
+  bodyFatPct       Decimal?  @map("body_fat_pct")
+  muscleMassKg     Decimal?  @map("muscle_mass_kg")
+  muscleMassPct    Decimal?  @map("muscle_mass_pct")
+  visceralFatLevel Int?      @map("visceral_fat_level")
+  waterPct         Decimal?  @map("water_pct")
+  boneMassKg       Decimal?  @map("bone_mass_kg")
+  metabolicAge     Int?      @map("metabolic_age")
   bmr              Int?
-  deviceType       String?  @map("device_type")
-  notes            String?  @db.Text
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime 
+  deviceType       String?   @map("device_type")
+  notes            String?   @db.Text
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  @@index([userId, measuredAt])
+  @@map("body_metrics")
+}
+
+// ── Sprint 15: Agenda do Doutor ───────────────────────────────────────────────
+model DoctorWorkingHours {
+  id           String   @id @default(uuid())
+  doctorId     String   @map("doctor_id")
+  doctor       Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  dayOfWeek    Int      @map("day_of_week")
+  startTime    String   @map("start_time")
+  endTime      String   @map("end_time")
+  slotMinutes  Int      @default(30) @map("slot_minutes")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@unique([doctorId, dayOfWeek])
+  @@map("doctor_working_hours")
+}
+
+model DoctorBlockedSlot {
+  id        String    @id @default(uuid())
+  doctorId  String    @map("doctor_id")
+  doctor    Doctor    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  date      DateTime
+  startTime String?   @map("start_time")
+  endTime   String?   @map("end_time")
+  reason    String?
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([doctorId, date])
+  @@map("doctor_blocked_slots")
+}
+
+model DoctorAppointment {
+  id               String    @id @default(uuid())
+  doctorId         String    @map("doctor_id")
+  doctor           Doctor    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  patientDoctorId  String?   @map("patient_doctor_id")
+  patientDoctor    PatientDoctor? @relation(fields: [patientDoctorId], references: [id])
+  patientName      String    @map("patient_name")
+  patientPhone     String?   @map("patient_phone")
+  patientIcode     String?   @map("patient_icode")
+  scheduledAt      DateTime  @map("scheduled_at")
+  durationMinutes  Int       @default(30) @map("duration_minutes")
+  type             String    @default("consulta")
+  status           String    @default("scheduled")
+  notes            String?   @db.Text
+  color            String    @default("#2563EB")
+  price            Decimal?
+  paymentStatus    String?   @map("payment_status")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  cashEntries      DoctorCashEntry[]
+
+  @@index([doctorId, scheduledAt])
+  @@map("doctor_appointments")
+}
+
+// ── Sprint 16: Receitas e Pedidos de Exame ────────────────────────────────────
+model DoctorPrescription {
+  id               String         @id @default(uuid())
+  doctorId         String         @map("doctor_id")
+  doctor           Doctor         @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  patientDoctorId  String?        @map("patient_doctor_id")
+  patientDoctor    PatientDoctor? @relation(fields: [patientDoctorId], references: [id])
+  patientName      String         @map("patient_name")
+  patientAge       Int?           @map("patient_age")
+  patientIcode     String?        @map("patient_icode")
+  items            Json
+  diagnosis        String?        @db.Text
+  notes            String?        @db.Text
+  validDays        Int            @default(30) @map("valid_days")
+  status           String         @default("active")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  @@index([doctorId])
+  @@map("doctor_prescriptions")
+}
+
+// ASO — Atestado de Saúde Ocupacional (NR-07). Emitido pelo médico examinador.
+model Aso {
+  id                 String         @id @default(uuid())
+  doctorId           String         @map("doctor_id")
+  doctor             Doctor         @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  patientDoctorId    String?        @map("patient_doctor_id")
+  patientDoctor      PatientDoctor? @relation(fields: [patientDoctorId], references: [id])
+
+  // Empresa
+  companyName        String         @map("company_name")
+  companyCnpj        String?        @map("company_cnpj")
+  companyAddress     String?        @map("company_address")
+  companyPhone       String?        @map("company_phone")
+
+  // Trabalhador
+  workerName         String         @map("worker_name")
+  workerCpf          String?        @map("worker_cpf")
+  workerRg           String?        @map("worker_rg")
+  workerBirthDate    DateTime?      @map("worker_birth_date")
+  workerSex          String?        @map("worker_sex")
+  workerRole         String?        @map("worker_role")
+  workerSector       String?        @map("worker_sector")
+  workerRegistration String?        @map("worker_registration")
+  admissionDate      DateTime?      @map("admission_date")
+
+  // Exame
+  examType           String         @map("exam_type")   // admissional|periodico|retorno|mudanca_funcao|demissional
+  examDate           DateTime       @map("exam_date")
+  jobDescription     String?        @db.Text @map("job_description")
+
+  // Riscos e exames complementares (JSON)
+  risks              Json           // string[]
+  complementaryExams Json           @map("complementary_exams") // [{ name, result?, date? }]
+
+  // Parecer médico
+  result             String         // apto|apto_restricoes|inapto
+  restrictions       String?        @db.Text
+  observations       String?        @db.Text
+
+  // Médico examinador
+  doctorName         String         @map("doctor_name")
+  doctorCrm          String         @map("doctor_crm")
+  doctorUf           String         @map("doctor_uf")
+  doctorSpecialty    String?        @map("doctor_specialty")
+
+  status             String         @default("issued") // issued|canceled
+  signedAt           DateTime?      @map("signed_at")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+
+  @@index([doctorId, createdAt])
+  @@map("asos")
+}
+
+model DoctorExamOrder {
+  id               String         @id @default(uuid())
+  doctorId         String         @map("doctor_id")
+  doctor           Doctor         @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  patientDoctorId  String?        @map("patient_doctor_id")
+  patientDoctor    PatientDoctor? @relation(fields: [patientDoctorId], references: [id])
+  patientName      String         @map("patient_name")
+  patientAge       Int?           @map("patient_age")
+  patientIcode     String?        @map("patient_icode")
+  exams            Json
+  clinicalInfo     String?        @db.Text @map("clinical_info")
+  urgency          String         @default("routine")
+  notes            String?        @db.Text
+  status           String         @default("active")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  @@index([doctorId])
+  @@map("doctor_exam_orders")
+}
+
+// ── Sprint 18: Funcionários ───────────────────────────────────────────────────
+model DoctorStaff {
+  id         String    @id @default(uuid())
+  doctorId   String    @map("doctor_id")
+  doctor     Doctor    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  userId     String    @map("user_id")
+  user       User      @relation(fields: [userId], references: [id])
+  role       String    @default("assistant")
+  customRole String?   @map("custom_role")
+  status     String    @default("active")
+  notes      String?   @db.Text
+  startedAt  DateTime  @default(now()) @map("started_at")
+  endedAt    DateTime? @map("ended_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@index([doctorId])
+  @@map("doctor_staff")
+}
+
+// ── Sprint 19: Financeiro ─────────────────────────────────────────────────────
+model DoctorCashEntry {
+  id             String            @id @default(uuid())
+  doctorId       String            @map("doctor_id")
+  doctor         Doctor            @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  appointmentId  String?           @map("appointment_id")
+  appointment    DoctorAppointment? @relation(fields: [appointmentId], references: [id])
+  type           String
+  category       String
+  description    String
+  amount         Decimal
+  paymentMethod  String            @default("cash") @map("payment_method")
+  entryDate      DateTime          @map("entry_date")
+  patientName    String?           @map("patient_name")
+  notes          String?           @db.Text
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  @@index([doctorId, entryDate])
+  @@map("doctor_cash_entries")
+}
+
+// ── Sprint 20: Chat WebSocket ─────────────────────────────────────────────────
+model ChatRoom {
+  id            String        @id @default(uuid())
+  doctorId      String        @map("doctor_id")
+  doctor        Doctor        @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  patientId     String        @map("patient_id")
+  patient       User          @relation("PatientChatRooms", fields: [patientId], references: [id])
+  lastMessageAt DateTime?     @map("last_message_at")
+  createdAt     DateTime      @default(now()) @map(

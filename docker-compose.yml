@@ -100,8 +100,10 @@ services:
       postgres:
         condition: service_healthy
 
-  # ── API (NestJS) ─────────────────────────────────────────────────────────────
+  # ── API (NestJS) — roda localmente via "pnpm dev", não via Docker ─────────────
+  # Para rodar em Docker futuramente: criar apps/api/Dockerfile.dev e remover o profile
   api:
+    profiles: ["docker-full"]
     build:
       context: ./apps/api
       dockerfile: Dockerfile.dev
@@ -132,8 +134,9 @@ services:
       - redis
       - keycloak
 
-  # ── Web (Next.js) ─────────────────────────────────────────────────────────────
+  # ── Web (Next.js) — roda localmente via "pnpm dev", não via Docker ─────────────
   web:
+    profiles: ["docker-full"]
     build:
       context: ./apps/web
       dockerfile: Dockerfile.dev

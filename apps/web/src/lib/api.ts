@@ -136,6 +136,17 @@ export const occupationalHealthApi = {
   createAssessment: (data: any)  => api.post('/occupational-health/psychosocial/assessments', data),
 };
 
+// ── Saúde Mental ────────────────────────────────────────────────────────────
+export const mentalHealthApi = {
+  listScales:       ()                      => api.get('/mental-health/scales'),
+  getQuestionnaire: (code: string)          => api.get(`/mental-health/scales/${code}`),
+  submit:           (code: string, data: any) => api.post(`/mental-health/assessments/${code}`, data),
+  listAssessments:  (scale?: string)        => api.get('/mental-health/assessments', { params: scale ? { scale } : {} }),
+  getAssessment:    (id: string)            => api.get(`/mental-health/assessments/${id}`),
+  consolidated:     ()                      => api.get('/mental-health/assessments/consolidated'),
+  saveConsolidated: ()                      => api.post('/mental-health/assessments/consolidated'),
+};
+
 // ── v7 — Exam Results ──────────────────────────────────────────────────────
 export const examResultsApi = {
   list:             () => api.get('/exam-results'),
@@ -165,3 +176,17 @@ export const bloodPressureApi = {
   classify: (systolic: number, diastolic: number) =>
     api.get('/blood-pressure/classify', { params: { systolic, diastolic } }),
 };
+
+// ── Sprint 14 — Glicemia / Módulo Diabetes ───────────────────────────────────
+export const glucoseApi = {
+  list:         (days?: number) => api.get('/glucose', { params: { days } }),
+  create:       (data: any)     => api.post('/glucose', data),
+  delete:       (id: string)    => api.delete(`/glucose/${id}`),
+  analyze:      (days?: number) => api.get('/glucose/analyze', { params: { days } }),
+  classify:     (value: number, context: string) =>
+    api.get('/glucose/classify', { params: { value, context } }),
+  createHbA1c:  (data: any)     => api.post('/glucose/hba1c', data),
+  listHbA1c:    ()              => api.get('/glucose/hba1c'),
+};
+
+// ── Sprint 12 — Exportação PDF �

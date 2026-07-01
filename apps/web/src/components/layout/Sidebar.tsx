@@ -13,11 +13,13 @@ const NAV_MAIN = [
   { href: '/family',              icon: '👨‍👩‍👧', label: 'Família' },
   { href: '/share',               icon: '🔗', label: 'Compartilhar' },
   { href: '/chat',                icon: '🤖', label: 'HealthBot' },
+  { href: '/telemedicina',        icon: '📹', label: 'Teleconsulta' },
 ];
 
 const NAV_VIDA = [
   { href: '/vida',                icon: '🫀', label: 'Módulo Vida' },
   { href: '/vida/pressao',        icon: '❤️',  label: 'Pressão Arterial' },
+  { href: '/vida/glicemia',       icon: '🩸',  label: 'Glicemia' },
   { href: '/vida/corpo',          icon: '⚖️',  label: 'Evolução Corporal' },
   { href: '/trend-report',        icon: '📋', label: 'Laudo de Tendência' },
 ];
@@ -29,6 +31,7 @@ const NAV_FEMALE = [
 const NAV_SPECIALTIES = [
   { href: '/ophthalmology',       icon: '👁️',  label: 'Oftalmologia' },
   { href: '/occupational-health', icon: '🦺',  label: 'Med. do Trabalho' },
+  { href: '/saude-mental',        icon: '🧠',  label: 'Saúde Mental' },
   { href: '/cirurgias',           icon: '🔪',  label: 'Cirurgias' },
   { href: '/vacinas',             icon: '💉',  label: 'Vacinas' },
   { href: '/medicos',             icon: '🩺',  label: 'Médicos' },
@@ -94,8 +97,8 @@ export function Sidebar() {
         {/* ICODE */}
         {user?.icode && (
           <div className="mt-2 pt-2 border-t border-white/10 text-center">
-            <div className="text-white/30 text-[9px] uppercase tracking-widest mb-0.5">ICODE</div>
-            <div className="text-white/70 text-[11px] font-mono font-bold tracking-wider">{user.icode}</div>
+            <div className="text-white/50 text-[11px] uppercase tracking-widest mb-0.5 font-semibold">ICODE</div>
+            <div className="text-white text-[13px] font-mono font-bold tracking-wider">{user.icode}</div>
           </div>
         )}
       </div>
@@ -122,8 +125,4 @@ export function Sidebar() {
           className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-all text-[13px]">
           <span>🚪</span> Sair
         </button>
-        <div className="text-center text-white/20 text-[10px] mt-2">v0.7 · LGPD compliant</div>
-      </div>
-    </aside>
-  );
-}
+        <div className="text-center text-white/20 text-

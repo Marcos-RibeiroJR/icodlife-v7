@@ -41,4 +41,17 @@ export class UpdateDoctorDto {
   @IsOptional()
   @IsUrl()
   website?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  languages?: string[];
+
+  @IsOptional()
+  @IsArray()
+  education?: any[];
+
+  @IsOptional()
+  @IsArray()
+  certifications?: any[];
 }

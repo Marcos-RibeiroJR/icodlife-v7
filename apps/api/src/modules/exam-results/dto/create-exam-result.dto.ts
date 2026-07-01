@@ -22,13 +22,7 @@ export class CreateExamItemDto {
   rawValue?: string;
 
   @IsOptional() @IsNumber()
-  refMin?: number;
-
-  @IsOptional() @IsNumber()
-  refMax?: number;
-
-  @IsOptional() @IsString()
-  refSource?: string;
+  refValue?: number;
 }
 
 export class CreateExamResultDto {
@@ -41,15 +35,13 @@ export class CreateExamResultDto {
   @IsOptional() @IsString()
   doctorName?: string;
 
-  @IsString()
-  @IsIn(['hemograma','bioquimica','hormonal','lipidograma','urina','outro'])
-  examType: string;
+  @IsOptional() @IsString()
+  examType?: string;
 
   @IsOptional() @IsString()
   healthRecordId?: string;
 
-  @IsOptional()
-  @IsArray()
+  @IsOptional() @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateExamItemDto)
   items?: CreateExamItemDto[];

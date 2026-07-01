@@ -1,24 +1,26 @@
 // apps/api/src/modules/body-metrics/body-metrics.service.ts
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { IsOptional, IsString, IsNumber, IsInt, IsDateString } from 'class-validator';
+import { Type } from 'class-transformer';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
-export interface CreateBodyMetricDto {
-  measuredAt?:       string;
-  weightKg?:         number;
-  heightCm?:         number;
-  bodyFatPct?:       number;
-  muscleMassKg?:     number;
-  muscleMassPct?:    number;
-  visceralFatLevel?: number;
-  waterPct?:         number;
-  boneMassKg?:       number;
-  metabolicAge?:     number;
-  bmr?:              number;
-  deviceType?:       string;
-  notes?:            string;
+export class CreateBodyMetricDto {
+  @IsOptional() @IsString()  measuredAt?:       string;
+  @IsOptional() @IsNumber() @Type(() => Number) weightKg?:         number;
+  @IsOptional() @IsNumber() @Type(() => Number) heightCm?:         number;
+  @IsOptional() @IsNumber() @Type(() => Number) bodyFatPct?:       number;
+  @IsOptional() @IsNumber() @Type(() => Number) muscleMassKg?:     number;
+  @IsOptional() @IsNumber() @Type(() => Number) muscleMassPct?:    number;
+  @IsOptional() @IsInt()    @Type(() => Number) visceralFatLevel?: number;
+  @IsOptional() @IsNumber() @Type(() => Number) waterPct?:         number;
+  @IsOptional() @IsNumber() @Type(() => Number) boneMassKg?:       number;
+  @IsOptional() @IsInt()    @Type(() => Number) metabolicAge?:     number;
+  @IsOptional() @IsInt()    @Type(() => Number) bmr?:              number;
+  @IsOptional() @IsString()  deviceType?:       string;
+  @IsOptional() @IsString()  notes?:            string;
 }
 
-export type UpdateBodyMetricDto = Partial<CreateBodyMetricDto>;
+export class UpdateBodyMetricDto extends CreateBodyMetricDto {}
 
 function calcBmi(heightCm: number, weightKg: number) {
   const bmi = weightKg / Math.pow(heightCm / 100, 2);

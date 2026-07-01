@@ -84,21 +84,11 @@ export class OccupationalHealthService {
     return this.prisma.psychosocialAssessment.create({
       data: {
         userId,
-        sector: dto.sector,
-        role: dto.role,
-        workRegime: dto.workRegime,
-        employmentType: dto.employmentType,
-        weeklyOvertimeHours: dto.weeklyOvertimeHours,
+        assessmentType: 'psychosocial',
         answers: dto.answers as any,
-        answeredCount: dto.answers.length,
-        overallScore: result.overallScore0to100,
-        overallTier: result.overallTier,
-        categoryScores: result.categories as any,
-        topRisks: result.topRisks.map(c => c.category),
-        laudo: result.laudo,
-        recommendations: result.recommendations,
-        consentGiven: !!dto.consentGiven,
-        completedAt: new Date(),
+        score: result.overallScore0to100,
+        riskLevel: result.overallTier,
+        aiAnalysis: result.laudo,
       },
     });
   }

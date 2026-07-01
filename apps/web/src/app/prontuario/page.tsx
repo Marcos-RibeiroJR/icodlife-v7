@@ -106,9 +106,31 @@ export default function ProntuarioPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="bg-white border-b border-slate-200 px-6 py-5">
-        <h1 className="text-xl font-bold text-slate-800">Meu Prontuário</h1>
-        <p className="text-slate-500 text-sm mt-0.5">Compartilhe seus dados com médicos via QR Code</p>
+      <div className="bg-white border-b border-slate-200 px-6 py-5 flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-slate-800">Meu Prontuário</h1>
+          <p className="text-slate-500 text-sm mt-0.5">Compartilhe seus dados com médicos via QR Code</p>
+        </div>
+        <button
+          onClick={async () => {
+            const token = getToken();
+            const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+            const res = await fetch(`${apiBase}/export/pdf/me`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) { alert('Erro ao gerar PDF'); return; }
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `prontuario-${Date.now()}.pdf`;
+            a.click();
+            URL.revokeObjectURL(url);
+          }}
+          className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition"
+        >
+          📄 Exportar PDF
+        </button>
       </div>
 
       <div className="max-w-3xl mx-auto px-6 py-6 space-y-6">

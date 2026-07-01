@@ -115,19 +115,19 @@ export class TrendReportService {
     const overallRisk: TrendReport['overallRisk'] =
       critical > 0       ? 'critical' :
       abnormal > 2       ? 'high' :
-      abnormal > 0 || (lifestyle?.healthScore != null && lifestyle.healthScore < 60) ? 'moderate' :
+      abnormal > 0 ? 'moderate' :
       'low';
 
     // 7. Cruzamento com estilo de vida
     const ls: LifestyleHighlights | null = lifestyle ? {
-      healthScore:       lifestyle.healthScore ?? null,
+      healthScore:       null,
       bmi:               lifestyle.bmi ? Number(lifestyle.bmi) : null,
       bmiCategory:       lifestyle.bmiCategory ?? null,
       smokingStatus:     lifestyle.smokingStatus ?? null,
       exerciseFrequency: lifestyle.exerciseFrequency ?? null,
       stressLevel:       lifestyle.stressLevel ?? null,
-      systolicBp:        (lifestyle as any).systolicBp ?? null,
-      diastolicBp:       (lifestyle as any).diastolicBp ?? null,
+      systolicBp:        null,
+      diastolicBp:       null,
     } : null;
 
     // 8. Recomendações automáticas
@@ -208,7 +208,7 @@ export class TrendReportService {
       if (ls.bmiCategory && ['obese_1','obese_2','obese_3'].includes(ls.bmiCategory)) {
         recs.push('IMC na faixa de obesidade: perda de 5-10% do peso corporal já melhora glicemia, PA e perfil lipídico.');
       }
-      if (ls.stressLevel && ls.stressLevel >= 8) {
+      if (ls.stressLevel && Number(ls.stressLevel) >= 8) {
         recs.push('Estresse severo: considere terapia, meditação ou mindfulness. Estresse crônico eleva cortisol e glicemia.');
       }
       if (ls.systolicBp && ls.diastolicBp && (ls.systolicBp >= 140 || ls.diastolicBp >= 90)) {
@@ -273,6 +273,6 @@ export class TrendReportService {
     text += riskLabels[risk] + '. ';
     text += 'Este laudo é informativo e não substitui avaliação médica.';
 
-    return text;
+    return text
   }
 }

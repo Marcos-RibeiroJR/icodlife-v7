@@ -19,10 +19,8 @@ CREATE TYPE "CrmStatus" AS ENUM ('pending', 'verified', 'suspended', 'canceled')
 CREATE TYPE "PatientDoctorStatus" AS ENUM ('pending', 'active', 'ended');
 
 -- DropForeignKey
-ALTER TABLE "blood_pressure_readings" DROP CONSTRAINT "blood_pressure_readings_user_id_fkey";
 
 -- AlterTable
-ALTER TABLE "blood_pressure_readings" ALTER COLUMN "updated_at" DROP DEFAULT;
 
 -- AlterTable
 ALTER TABLE "family_members" ALTER COLUMN "invite_expires_at" SET DEFAULT NOW() + INTERVAL '7 days';
@@ -116,7 +114,6 @@ CREATE UNIQUE INDEX "patient_doctors_user_id_doctor_id_key" ON "patient_doctors"
 CREATE INDEX "ophthalmology_exams_user_id_created_at_idx" ON "ophthalmology_exams"("user_id", "created_at");
 
 -- AddForeignKey
-ALTER TABLE "blood_pressure_readings" ADD CONSTRAINT "blood_pressure_readings_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "doctors" ADD CONSTRAINT "doctors_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;

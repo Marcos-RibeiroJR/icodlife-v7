@@ -71,6 +71,7 @@ export default function CorpoPage() {
   const [showForm, setShowForm]   = useState(false);
   const [form, setForm]           = useState(EMPTY_FORM);
   const [saving, setSaving]       = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [activeChart, setActive]  = useState<'weight' | 'bmi' | 'bodyFat' | 'muscleMass'>('weight');
 
   const load = useCallback(async () => {
@@ -81,31 +82,50 @@ export default function CorpoPage() {
       ]);
       setStats(s.data);
       setHistory(h.data.items ?? []);
-    } catch {}
+    } catch (e: any) {
+      // silencioso — não exibe erro em lista
+      console.warn('body-metrics load error:', e?.response?.status);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  const save = async () => {
+  const save = () => {
     setSaving(true);
-    try {
-      const payload: Record<string, any> = { measuredAt: form.measuredAt, deviceType: form.deviceType, notes: form.notes };
-      if (form.weightKg)         payload.weightKg         = Number(form.weightKg);
-      if (form.heightCm)         payload.heightCm         = Number(form.heightCm);
-      if (form.bodyFatPct)       payload.bodyFatPct       = Number(form.bodyFatPct);
-      if (form.muscleMassKg)     payload.muscleMassKg     = Number(form.muscleMassKg);
-      if (form.muscleMassPct)    payload.muscleMassPct    = Number(form.muscleMassPct);
-      if (form.visceralFatLevel) payload.visceralFatLevel = Number(form.visceralFatLevel);
-      if (form.waterPct)         payload.waterPct         = Number(form.waterPct);
-      if (form.boneMassKg)       payload.boneMassKg       = Number(form.boneMassKg);
-      if (form.metabolicAge)     payload.metabolicAge     = Number(form.metabolicAge);
-      if (form.bmr)              payload.bmr              = Number(form.bmr);
-      await axios.post(`${API}/body-metrics`, payload, authH());
-      setForm(EMPTY_FORM);
-      setShowForm(false);
-      await load();
-    } catch {}
-    finally { setSaving(false); }
+    setSaveError('');
+
+    const num = (v: string) => v !== '' ? Number(v) : undefined;
+    const payload: Record<string, any> = {
+      measuredAt:  form.measuredAt || undefined,
+      deviceType:  form.deviceType || undefined,
+      notes:       form.notes       || undefined,
+    };
+    if (num(form.weightKg)         !== undefined) payload.weightKg         = num(form.weightKg);
+    if (num(form.heightCm)         !== undefined) payload.heightCm         = num(form.heightCm);
+    if (num(form.bodyFatPct)       !== undefined) payload.bodyFatPct       = num(form.bodyFatPct);
+    if (num(form.muscleMassKg)     !== undefined) payload.muscleMassKg     = num(form.muscleMassKg);
+    if (num(form.muscleMassPct)    !== undefined) payload.muscleMassPct    = num(form.muscleMassPct);
+    if (num(form.visceralFatLevel) !== undefined) payload.visceralFatLevel = Math.round(num(form.visceralFatLevel)!);
+    if (num(form.waterPct)         !== undefined) payload.waterPct         = num(form.waterPct);
+    if (num(form.boneMassKg)       !== undefined) payload.boneMassKg       = num(form.boneMassKg);
+    if (num(form.metabolicAge)     !== undefined) payload.metabolicAge     = Math.round(num(form.metabolicAge)!);
+    if (num(form.bmr)              !== undefined) payload.bmr              = Math.round(num(form.bmr)!);
+
+    axios.post(`${API}/body-metrics`, payload, authH())
+      .then(() => {
+        setForm(EMPTY_FORM);
+        setShowForm(false);
+        return load();
+      })
+      .catch((e: any) => {
+        const msg = e?.response?.data?.message;
+        setSaveError(
+          Array.isArray(msg)
+            ? msg.join(' | ')
+            : (msg ?? `Erro ${e?.response?.status ?? ''}: verifique os dados e tente novamente.`)
+        );
+      })
+      .finally(() => setSaving(false));
   };
 
   const del = async (id: string) => {
@@ -221,6 +241,11 @@ export default function CorpoPage() {
               <textarea rows={2} className={inp} placeholder="ex: após academia, em jejum…" value={form.notes}
                 onChange={e => setForm(f => ({...f, notes: e.target.value}))} />
             </div>
+            {saveError && (
+              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+                {saveError}
+              </div>
+            )}
             <button onClick={save} disabled={saving}
               className="mt-4 px-6 py-2 bg-rose-600 text-white rounded-xl text-sm font-medium hover:bg-rose-700 disabled:opacity-50">
               {saving ? 'Salvando…' : 'Salvar Medição'}

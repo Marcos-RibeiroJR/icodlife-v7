@@ -8,6 +8,7 @@ export interface User {
   fullName: string;
   gender: 'male' | 'female' | 'other';
   bloodType: string;
+  isDonor?: boolean;
   avatarUrl?: string;
   status: string;
   icode?: string | null;
@@ -30,11 +31,16 @@ export const useAuthStore = create<AuthState>()(
       accessToken: null,
       refreshToken: null,
       isAuthenticated: false,
-      setAuth: (user, accessToken, refreshToken) =>
-        set({ user, accessToken, refreshToken, isAuthenticated: true }),
+      setAuth: (user, accessToken, refreshToken) => {
+        // Escreve também em icodlife_token para compatibilidade com páginas que usam axios direto
+        if (typeof window !== 'undefined') localStorage.setItem('icodlife_token', accessToken);
+        set({ user, accessToken, refreshToken, isAuthenticated: true });
+      },
       setUser: (user) => set({ user }),
-      logout: () =>
-        set({ user: null, accessToken: null, refreshToken: null, isAuthenticated: false }),
+      logout: () => {
+        if (typeof window !== 'undefined') localStorage.removeItem('icodlife_token');
+        set({ user: null, accessToken: null, refreshToken: null, isAuthenticated: false });
+      },
     }),
     {
       name: 'icodlife-auth',
@@ -43,7 +49,4 @@ export const useAuthStore = create<AuthState>()(
         accessToken: s.accessToken,
         refreshToken: s.refreshToken,
         isAuthenticated: s.isAuthenticated,
-      }),
-    }
-  )
-);
+  

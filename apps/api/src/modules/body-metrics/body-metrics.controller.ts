@@ -1,16 +1,24 @@
 // apps/api/src/modules/body-metrics/body-metrics.controller.ts
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Request, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Request, UseGuards, UsePipes, ValidationPipe, Logger, InternalServerErrorException } from '@nestjs/common';
 import { BodyMetricsService, CreateBodyMetricDto, UpdateBodyMetricDto } from './body-metrics.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
 @Controller('body-metrics')
 @UseGuards(JwtAuthGuard)
+@UsePipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: false }))
 export class BodyMetricsController {
+  private readonly logger = new Logger(BodyMetricsController.name);
   constructor(private svc: BodyMetricsService) {}
 
   @Post()
-  create(@Request() req: any, @Body() dto: CreateBodyMetricDto) {
-    return this.svc.create(req.user.userId, dto);
+  async create(@Request() req: any, @Body() dto: CreateBodyMetricDto) {
+    this.logger.warn(`[POST body-metrics] userId=${req.user?.userId} body=${JSON.stringify(dto)}`);
+    try {
+      return await this.svc.create(req.user.userId, dto);
+    } catch (e: any) {
+      this.logger.error(`[POST body-metrics] ERRO: ${e.message}`, e.stack);
+      throw new InternalServerErrorException(e.message);
+    }
   }
 
   @Get()

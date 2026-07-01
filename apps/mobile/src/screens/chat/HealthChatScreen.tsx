@@ -26,7 +26,7 @@ const QUICK_REPLIES = [
 ];
 
 export default function HealthChatScreen() {
-  const { user, token } = useAuthStore();
+  const { user, accessToken: token } = useAuthStore();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);

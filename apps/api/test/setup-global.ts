@@ -17,23 +17,12 @@ export default async function globalSetup() {
       const match = line.match(/^([^#=\s][^=]*)=(.*)$/);
       if (match) {
         const key = match[1].trim();
-        const val = match[2].trim().replace(/^["']|["']$/g, '');
-        if (!process.env[key]) process.env[key] = val;
+        const val = match[2].trim().replace(/^["']|["']$/, '');
+        process.env[key] = val;
       }
     }
   }
 
-  const dbUrl = process.env.DATABASE_URL;
-
-  if (!dbUrl) {
-    throw new Error('DATABASE_URL não definida. Configure o banco de teste antes de rodar os E2E.');
-  }
-
-  console.log('\n🔧 [E2E Setup] Aplicando migrations no banco de teste...');
-  execSync('npx prisma migrate deploy', {
-    cwd: rootDir,
-    env: { ...process.env },
-    stdio: 'pipe',
-  });
-  console.log('✅ [E2E Setup] Migrations aplicadas\n');
+  console.log('Running prisma db push for test database...');
+  execSync('npx prisma db push --force-reset', { cwd: rootDir, stdio: 'inherit' });
 }

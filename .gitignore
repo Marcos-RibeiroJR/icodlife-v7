@@ -40,3 +40,12 @@ mongo_data/
 !certs/
 
 .turbo/
+
+# Prisma client gerado (regenerado por prisma generate)
+apps/api/src/generated/
+
+# build artifacts
+*.tsbuildinfo
+
+# pnpm temp leftovers
+_tmp_*

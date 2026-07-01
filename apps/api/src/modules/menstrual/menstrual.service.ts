@@ -6,7 +6,6 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 export class MenstrualService {
   constructor(private prisma: PrismaService) {}
 
-  // Verificar acesso — apenas usuárias femininas/other
   private async checkAccess(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || !['female', 'other'].includes(user.gender)) {
@@ -15,82 +14,75 @@ export class MenstrualService {
     return user;
   }
 
-  // ── REGISTRAR INÍCIO DE CICLO ─────────────────────────────────────────────
-
   async startCycle(userId: string, dto: {
-    cycleStart: string;
-    flowIntensity?: number;
-    symptoms?: string[];
+    cycleStart?: string;
+    startDate?: string;
     notes?: string;
   }) {
     await this.checkAccess(userId);
-
-    // Calcular previsão baseada no histórico
-    const { avgLength, avgPeriod } = await this.getAverageCycleData(userId);
-    const startDate = new Date(dto.cycleStart);
-    const nextPredicted = new Date(startDate);
-    nextPredicted.setDate(nextPredicted.getDate() + avgLength);
-    const ovulationPredicted = new Date(startDate);
-    ovulationPredicted.setDate(ovulationPredicted.getDate() + Math.round(avgLength / 2) - 1);
+    const startDate = new Date(dto.startDate || dto.cycleStart || new Date());
 
     return this.prisma.menstrualCycle.create({
       data: {
         userId,
-        cycleStart: startDate,
-        flowIntensity: dto.flowIntensity,
-        symptoms: dto.symptoms ?? [],
+        startDate,
         notes: dto.notes,
-        currentPhase: 'menstrual',
-        nextCyclePredicted: nextPredicted,
-        ovulationPredicted,
       },
     });
   }
 
-  // ── LOG DIÁRIO ────────────────────────────────────────────────────────────
-
   async logDay(userId: string, dto: {
-    loggedDate: string;
-    flowIntensity?: number;
+    loggedDate?: string;
+    date?: string;
+    flow?: string;
     symptoms?: string[];
-    mood?: string[];
-    basalTemp?: number;
-    cervicalMucus?: string;
+    mood?: string | string[];
+    temperature?: number;
     notes?: string;
   }) {
     await this.checkAccess(userId);
 
-    return this.prisma.menstrualDailyLog.upsert({
-      where: { userId_loggedDate: { userId, loggedDate: new Date(dto.loggedDate) } },
-      create: {
+    const date = new Date(dto.date || dto.loggedDate || new Date());
+    // mood: schema is String?, service may send array — take first element
+    const mood = Array.isArray(dto.mood) ? (dto.mood[0] ?? null) : (dto.mood ?? null);
+
+    // No compound unique on userId+date — manual upsert
+    const existing = await this.prisma.menstrualDailyLog.findFirst({
+      where: { userId, date },
+    });
+
+    if (existing) {
+      return this.prisma.menstrualDailyLog.update({
+        where: { id: existing.id },
+        data: {
+          flow: dto.flow,
+          symptoms: dto.symptoms,
+          mood,
+          temperature: dto.temperature,
+          notes: dto.notes,
+        },
+      });
+    }
+
+    return this.prisma.menstrualDailyLog.create({
+      data: {
         userId,
-        loggedDate: new Date(dto.loggedDate),
-        flowIntensity: dto.flowIntensity,
+        date,
+        flow: dto.flow,
         symptoms: dto.symptoms ?? [],
-        mood: dto.mood ?? [],
-        basalTemp: dto.basalTemp,
-        cervicalMucus: dto.cervicalMucus,
-        notes: dto.notes,
-      },
-      update: {
-        flowIntensity: dto.flowIntensity,
-        symptoms: dto.symptoms,
-        mood: dto.mood,
-        basalTemp: dto.basalTemp,
-        cervicalMucus: dto.cervicalMucus,
+        mood,
+        temperature: dto.temperature,
         notes: dto.notes,
       },
     });
   }
-
-  // ── ESTATÍSTICAS E PREDIÇÕES ──────────────────────────────────────────────
 
   async getStats(userId: string) {
     await this.checkAccess(userId);
 
     const cycles = await this.prisma.menstrualCycle.findMany({
       where: { userId },
-      orderBy: { cycleStart: 'desc' },
+      orderBy: { startDate: 'desc' },
       take: 12,
     });
 
@@ -98,19 +90,17 @@ export class MenstrualService {
     const lastCycle = cycles[0];
 
     let currentPhase: string | null = null;
-    let daysUntilNext: number | null = null;
-
-    if (lastCycle?.nextCyclePredicted) {
-      const today = new Date();
-      const diffDays = Math.round(
-        (lastCycle.nextCyclePredicted.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-      );
-      daysUntilNext = diffDays;
-      currentPhase = this.calculatePhase(lastCycle.cycleStart, avgLength);
+    if (lastCycle) {
+      currentPhase = this.calculatePhase(lastCycle.startDate, avgLength);
     }
 
-    // Sintomas mais frequentes
-    const allSymptoms = cycles.flatMap(c => c.symptoms);
+    // Sintomas mais frequentes (from daily logs)
+    const dailyLogs = await this.prisma.menstrualDailyLog.findMany({
+      where: { userId },
+      orderBy: { date: 'desc' },
+      take: 100,
+    });
+    const allSymptoms = dailyLogs.flatMap(d => d.symptoms);
     const symptomCount: Record<string, number> = {};
     allSymptoms.forEach(s => { symptomCount[s] = (symptomCount[s] || 0) + 1; });
     const topSymptoms = Object.entries(symptomCount)
@@ -118,20 +108,21 @@ export class MenstrualService {
       .slice(0, 5)
       .map(([symptom, count]) => ({ symptom, count }));
 
+    // Predict next cycle
+    const nextCyclePredicted = lastCycle
+      ? new Date(lastCycle.startDate.getTime() + avgLength * 86_400_000)
+      : null;
+
     return {
       cycleCount: cycles.length,
       averageCycleLength: avgLength,
       averagePeriodLength: avgPeriod,
       currentPhase,
-      daysUntilNextCycle: daysUntilNext,
-      nextCyclePredicted: lastCycle?.nextCyclePredicted,
-      ovulationPredicted: lastCycle?.ovulationPredicted,
+      nextCyclePredicted,
       topSymptoms,
       cycles: cycles.slice(0, 6),
     };
   }
-
-  // ── CALENDÁRIO (últimos 3 meses) ──────────────────────────────────────────
 
   async getCalendar(userId: string) {
     await this.checkAccess(userId);
@@ -141,24 +132,22 @@ export class MenstrualService {
 
     const [cycles, dailyLogs] = await Promise.all([
       this.prisma.menstrualCycle.findMany({
-        where: { userId, cycleStart: { gte: threeMonthsAgo } },
-        orderBy: { cycleStart: 'asc' },
+        where: { userId, startDate: { gte: threeMonthsAgo } },
+        orderBy: { startDate: 'asc' },
       }),
       this.prisma.menstrualDailyLog.findMany({
-        where: { userId, loggedDate: { gte: threeMonthsAgo } },
-        orderBy: { loggedDate: 'asc' },
+        where: { userId, date: { gte: threeMonthsAgo } },
+        orderBy: { date: 'asc' },
       }),
     ]);
 
     return { cycles, dailyLogs };
   }
 
-  // ── HELPERS ───────────────────────────────────────────────────────────────
-
   private async getAverageCycleData(userId: string) {
     const cycles = await this.prisma.menstrualCycle.findMany({
       where: { userId, cycleLength: { not: null } },
-      orderBy: { cycleStart: 'desc' },
+      orderBy: { startDate: 'desc' },
       take: 6,
     });
 
@@ -172,9 +161,9 @@ export class MenstrualService {
     return { avgLength, avgPeriod };
   }
 
-  private calculatePhase(cycleStart: Date, cycleLength: number): string {
+  private calculatePhase(startDate: Date, cycleLength: number): string {
     const today = new Date();
-    const dayOfCycle = Math.round((today.getTime() - cycleStart.getTime()) / (1000 * 60 * 60 * 24));
+    const dayOfCycle = Math.round((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
     const ovDay = Math.round(cycleLength / 2) - 1;
 
     if (dayOfCycle <= 5) return 'menstrual';

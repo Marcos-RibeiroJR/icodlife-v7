@@ -5,7 +5,7 @@ import { useAuthStore } from '../../store/auth.store';
 import { apiClient } from '../../services/api.client';
 
 export default function ProfileScreen() {
-  const { user, logout, token } = useAuthStore();
+  const { user, logout, accessToken: token } = useAuthStore();
 
   const handleLogout = () => {
     Alert.alert('Sair', 'Deseja encerrar a sessão?', [

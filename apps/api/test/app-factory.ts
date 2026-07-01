@@ -26,9 +26,7 @@ export async function createApp(): Promise<INestApplication> {
 
   // Registra /health igual ao main.ts
   const httpAdapter = app.getHttpAdapter();
-  httpAdapter.get('/health', (_req: any, res: any) => {
-    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
-  });
+  httpAdapter.get('/health', (_req: any, res: any) => res.json({ status: 'ok' }));
 
   await app.init();
   return app;

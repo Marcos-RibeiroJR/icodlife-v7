@@ -65,15 +65,6 @@ export class OphthalmologyService {
     return this.prisma.ophthalmologyExam.create({
       data: {
         userId,
-        status: 'completed',
-        estimatedDistanceCm: dto.estimatedDistanceCm,
-        deviceType: dto.deviceType,
-        acuityRightEye: dto.acuityRightEye,
-        acuityLeftEye:  dto.acuityLeftEye,
-        snellenRightRaw: dto.snellenRightRaw ?? [],
-        snellenLeftRaw:  dto.snellenLeftRaw  ?? [],
-        astigmatismRight: dto.astigmatismRight,
-        astigmatismLeft:  dto.astigmatismLeft,
         astigmatismAxisRight: dto.astigmatismAxisRight,
         astigmatismAxisLeft:  dto.astigmatismAxisLeft,
         contrastScoreRight: dto.contrastScoreRight,

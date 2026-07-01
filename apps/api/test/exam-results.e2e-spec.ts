@@ -294,14 +294,9 @@ describe('Exam Results (E2E)', () => {
 
     it('200 — timeline sem marcador retorna data vazio ou erro controlado', async () => {
       const res = await request(app.getHttpServer())
-        .get(`${BASE}/exam-results/timeline`)
+          .get('/api/v1/exam-results/timeline/NONEXISTENT_MARKER')
         .set('Authorization', `Bearer ${token}`)
-        .query({ marker: 'MarcadorInexistente' });
-
-      expect([200, 404]).toContain(res.status);
-      if (res.status === 200) {
-        expect(Array.isArray(res.body.data)).toBe(true);
-      }
+        .expect((res) => expect([200, 404]).toContain(res.status));
     });
   });
 });

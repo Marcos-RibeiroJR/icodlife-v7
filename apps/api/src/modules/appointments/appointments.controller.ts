@@ -19,34 +19,15 @@ export class AppointmentsController {
   @Get('summary')
   summary(@Request() req: any) { return this.svc.getSummary(req.user.userId); }
 
-  @Get('calendar')
-  calendar(
-    @Request() req: any,
-    @Query('year')  year:  string,
-    @Query('month') month: string,
-  ) {
-    const y = year  ? Number(year)  : new Date().getFullYear();
-    const m = month ? Number(month) : new Date().getMonth() + 1;
-    return this.svc.getByMonth(req.user.userId, y, m);
-  }
-
   @Get(':id')
-  findOne(@Request() req: any, @Param('id') id: string) {
-    return this.svc.findOne(req.user.userId, id);
-  }
+  get(@Request() req: any, @Param('id') id: string) { return this.svc.get(req.user.userId, id); }
 
   @Post()
-  create(@Request() req: any, @Body() dto: CreateAppointmentDto) {
-    return this.svc.create(req.user.userId, dto);
-  }
+  create(@Request() req: any, @Body() dto: CreateAppointmentDto) { return this.svc.create(req.user.userId, dto); }
 
   @Patch(':id')
-  update(@Request() req: any, @Param('id') id: string, @Body() dto: UpdateAppointmentDto) {
-    return this.svc.update(req.user.userId, id, dto);
-  }
+  update(@Request() req: any, @Param('id') id: string, @Body() dto: UpdateAppointmentDto) { return this.svc.update(req.user.userId, id, dto); }
 
   @Delete(':id')
-  remove(@Request() req: any, @Param('id') id: string) {
-    return this.svc.remove(req.user.userId, id);
-  }
+  remove(@Request() req: any, @Param('id') id: string) { return this.svc.remove(req.user.userId, id); }
 }

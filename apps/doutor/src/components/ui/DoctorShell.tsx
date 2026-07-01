@@ -6,9 +6,17 @@ import Link from 'next/link';
 import { getStoredUser, logout, type DoctorUser } from '@/lib/auth';
 
 const NAV = [
-  { href: '/dashboard', label: 'Dashboard',  icon: '◈' },
-  { href: '/patients',  label: 'Pacientes',   icon: '👥' },
-  { href: '/profile',   label: 'Meu Perfil',  icon: '⚕️' },
+  { href: '/dashboard',  label: 'Dashboard',        icon: '◈'  },
+  { href: '/patients',   label: 'Meu Paciente',      icon: '👥' },
+  { href: '/token',      label: 'TOKEN / QR Code',   icon: '📲' },
+  { href: '/agenda',     label: 'Minha Agenda',      icon: '📅' },
+  { href: '/receitas',   label: 'Meus Exames',       icon: '📋' },
+  { href: '/aso',        label: 'ASO Ocupacional',   icon: '📄' },
+  { href: '/staff',      label: 'Meu Funcionários',  icon: '🏥' },
+  { href: '/financeiro', label: 'Financeiro',        icon: '💰' },
+  { href: '/profile',    label: 'Meu Currículo',     icon: '⚕️' },
+  { href: '/chat',          label: 'Fale com Paciente', icon: '💬' },
+  { href: '/telemedicina',  label: 'Telemedicina',      icon: '📹' },
 ];
 
 export default function DoctorShell({ children }: { children: React.ReactNode }) {
@@ -65,9 +73,4 @@ export default function DoctorShell({ children }: { children: React.ReactNode })
       </aside>
 
       {/* Main */}
-      <main className="flex-1 overflow-auto">
-        {children}
-      </main>
-    </div>
-  );
-}
+      <main className="flex-

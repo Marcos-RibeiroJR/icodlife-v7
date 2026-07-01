@@ -30,6 +30,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user || user.status === 'deleted') {
       throw new UnauthorizedException('Usuário não encontrado');
     }
-    return user;
+    // Retorna tanto id quanto userId para compatibilidade com todos os controllers
+    return {
+      id:       user.id,
+      userId:   user.id,
+      email:    user.email,
+      fullName: user.fullName,
+      gender:   user.gender,
+      role:     user.role,
+      status:   user.status,
+    };
   }
 }

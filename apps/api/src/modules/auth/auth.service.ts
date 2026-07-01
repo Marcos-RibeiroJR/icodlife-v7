@@ -58,12 +58,14 @@ export class AuthService {
 
     const genderNum = gender === 'female' ? '2' : gender === 'other' ? '3' : '1';
 
-    // Incremento atômico do contador
+    // Incremento atômico do contador (upsert garante que a linha existe)
     const counter = await this.prisma.$transaction(async (tx) => {
-      const row = await tx.icodeCounter.findFirst();
-      if (!row) return 1n;
-      await tx.icodeCounter.update({ where: { id: row.id }, data: { nextValue: { increment: 1 } } });
-      return row.nextValue;
+      const row = await tx.icodeCounter.upsert({
+        where:  { id: 1 },
+        create: { id: 1, nextValue: 2n },
+        update: { nextValue: { increment: 1n } },
+      });
+      return row.nextValue - 1n;
     });
 
     const sequential = String(counter).padStart(7, '0');
@@ -114,17 +116,28 @@ export class AuthService {
 
   async login(dto: LoginDto, ip: string, userAgent: string) {
     const user = await this.prisma.user.findUnique({ where: { email: dto.email.toLowerCase() } });
+
+    // DEBUG LOGIN — remover após diagnóstico
+    const Logger = require('@nestjs/common').Logger;
+    const logger = new Logger('AuthService:login');
+    logger.warn(`[LOGIN] email=${dto.email.toLowerCase()} found=${!!user} status=${user?.status} hasHash=${!!(user as any)?.passwordHash} deletedAt=${user?.deletedAt}`);
+
     if (!user || user.deletedAt) throw new UnauthorizedException('Credenciais inválidas');
-    if (user.status === 'pending_verification') throw new ForbiddenException('E-mail não verificado.');
+    if (user.status === 'pending_verification') throw new ForbiddenException('E-mail não verificado. Verifique sua caixa de entrada.');
     if (user.status === 'suspended') throw new ForbiddenException('Conta suspensa.');
 
     let valid = false;
+    let validSource = 'none';
 
     // 1. Tentar Redis (cache — mais rápido)
     try {
       const hashFromRedis = await this.redis.get(`user:pwd:${user.id}`);
       if (hashFromRedis) {
         valid = await bcrypt.compare(dto.password, hashFromRedis);
+        if (valid) validSource = 'redis';
+        logger.warn(`[LOGIN] redis hash found, bcrypt compare: ${valid}`);
+      } else {
+        logger.warn('[LOGIN] redis: no hash cached');
       }
     } catch {
       // Redis indisponível, seguir para Postgres
@@ -134,13 +147,19 @@ export class AuthService {
     if (!valid && (user as any).passwordHash) {
       valid = await bcrypt.compare(dto.password, (user as any).passwordHash);
       if (valid) {
+        validSource = 'db';
         // Repovoar cache Redis
         try { await this.redis.set(`user:pwd:${user.id}`, (user as any).passwordHash, 0); } catch {}
       }
+      logger.warn(`[LOGIN] db hash compare: ${valid}`);
+    } else if (!valid) {
+      logger.warn('[LOGIN] db: passwordHash is NULL — senha não salva no banco');
     }
 
     // 3. Fallback dev seed (remover antes de produção)
-    if (!valid) { valid = dto.password === 'Demo@12345'; }
+    if (!valid) { valid = dto.password === 'Demo@12345'; if (valid) validSource = 'seed'; }
+
+    logger.warn(`[LOGIN] final valid=${valid} source=${validSource}`);
 
     if (!valid) {
       await this.audit.log(user.id, 'auth.login_failed', 'user', user.id, ip, userAgent);

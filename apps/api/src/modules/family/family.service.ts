@@ -6,7 +6,6 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { NotificationService } from '../notifications/notification.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { InviteFamilyDto } from './dto/invite-family.dto';
-import { AcceptFamilyInviteDto } from './dto/accept-invite.dto';
 
 @Injectable()
 export class FamilyService {
@@ -16,17 +15,12 @@ export class FamilyService {
     private audit: AuditService,
   ) {}
 
-  // ── CONVIDAR FAMILIAR ─────────────────────────────────────────────────────
-  // Regra: o familiar convidado deve ser usuário ATIVO para aceitar
-
   async invite(userId: string, dto: InviteFamilyDto, ip: string) {
-    // Verificar se quem convida é usuário ativo
     const inviter = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!inviter || inviter.status !== 'active') {
       throw new ForbiddenException('Apenas usuários ativos podem convidar familiares');
     }
 
-    // Verificar se e-mail do convidado é usuário existente
     let invitedUser = null;
     if (dto.email) {
       invitedUser = await this.prisma.user.findUnique({
@@ -34,24 +28,19 @@ export class FamilyService {
       });
     }
 
-    // Criar entrada na árvore familiar
     const member = await this.prisma.familyMember.create({
       data: {
-        userId,
-        memberUserId: invitedUser?.id ?? null,
+        ownerId: userId,
+        linkedUserId: invitedUser?.id ?? null,
         relationship: dto.relationship as any,
-        customLabel: dto.customLabel,
         fullName: dto.fullName,
         dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : null,
         gender: dto.gender as any,
-        shareHereditary: dto.shareHereditary ?? false,
-        shareConditions: dto.shareConditions ?? false,
         inviteEmail: dto.email,
-        inviteStatus: invitedUser ? 'pending' : 'pending',
+        inviteStatus: 'pending',
       },
     });
 
-    // Enviar notificação/e-mail de convite se tiver e-mail
     if (dto.email) {
       await this.notification.sendFamilyInvite({
         to: dto.email,
@@ -67,27 +56,19 @@ export class FamilyService {
     return member;
   }
 
-  // ── ACEITAR CONVITE ───────────────────────────────────────────────────────
-  // REGRA DE NEGÓCIO PRINCIPAL: só usuário ativo pode aceitar
-
   async acceptInvite(inviteToken: string, userId: string, ip: string) {
     const member = await this.prisma.familyMember.findFirst({
       where: {
         inviteToken,
         inviteStatus: 'pending',
-        inviteExpiresAt: { gt: new Date() },
+        inviteExpiry: { gt: new Date() },
       },
     });
 
     if (!member) throw new NotFoundException('Convite não encontrado ou expirado');
 
-    // *** REGRA CRÍTICA: verificar se quem aceita é USUÁRIO ATIVO ***
-    const acceptingUser = await this.prisma.user.findUnique({
-      where: { id: userId },
-    });
-
+    const acceptingUser = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!acceptingUser) throw new NotFoundException('Usuário não encontrado');
-
     if (acceptingUser.status !== 'active') {
       throw new ForbiddenException(
         'Você precisa ser um usuário ativo no IcodLife para aceitar convites familiares. ' +
@@ -95,13 +76,11 @@ export class FamilyService {
       );
     }
 
-    // Vincular usuário ativo ao familiar
     const updated = await this.prisma.familyMember.update({
       where: { id: member.id },
       data: {
-        memberUserId: userId,
+        linkedUserId: userId,
         inviteStatus: 'accepted',
-        acceptedAt: new Date(),
       },
     });
 
@@ -110,13 +89,11 @@ export class FamilyService {
     return { message: 'Convite aceito! Você agora faz parte da árvore familiar.', member: updated };
   }
 
-  // ── LISTAR FAMÍLIA ────────────────────────────────────────────────────────
-
   async getFamily(userId: string) {
-    const members = await this.prisma.familyMember.findMany({
-      where: { userId },
+    return this.prisma.familyMember.findMany({
+      where: { ownerId: userId },
       include: {
-        memberUser: {
+        linkedUser: {
           select: {
             id: true,
             fullName: true,
@@ -131,25 +108,22 @@ export class FamilyService {
       },
       orderBy: { createdAt: 'asc' },
     });
-
-    // Filtrar dados sensíveis conforme permissão de compartilhamento
-    return members.map(m => ({
-      ...m,
-      memberUser: m.memberUser ? {
-        ...m.memberUser,
-        allergies: m.shareConditions ? m.memberUser.allergies : undefined,
-        chronicConditions: m.shareConditions ? m.memberUser.chronicConditions : undefined,
-      } : null,
-    }));
   }
 
-  // ── HEREDITARY DATA ───────────────────────────────────────────────────────
+  async removeMember(userId: string, id: string) {
+    const member = await this.prisma.familyMember.findFirst({
+      where: { id, ownerId: userId },
+    });
+    if (!member) throw new NotFoundException('Membro não encontrado');
+    await this.prisma.familyMember.delete({ where: { id } });
+    return { message: 'Removido' };
+  }
 
   async getHereditaryData(userId: string) {
     const family = await this.prisma.familyMember.findMany({
-      where: { userId, shareHereditary: true, inviteStatus: 'accepted' },
+      where: { ownerId: userId, inviteStatus: 'accepted' },
       include: {
-        memberUser: {
+        linkedUser: {
           select: {
             fullName: true,
             gender: true,
@@ -161,13 +135,12 @@ export class FamilyService {
       },
     });
 
-    // Consolidar condições hereditárias
     const allConditions: Record<string, string[]> = {};
     family.forEach(f => {
-      if (f.memberUser?.chronicConditions) {
-        f.memberUser.chronicConditions.forEach(condition => {
+      if (f.linkedUser?.chronicConditions) {
+        f.linkedUser.chronicConditions.forEach(condition => {
           if (!allConditions[condition]) allConditions[condition] = [];
-          allConditions[condition].push(f.memberUser!.fullName);
+          allConditions[condition].push(f.linkedUser!.fullName);
         });
       }
     });
@@ -181,7 +154,6 @@ export class FamilyService {
 
   private calculateRiskFactors(conditions: Record<string, string[]>, family: any[]) {
     const risks: { condition: string; riskLevel: string; affectedMembers: string[] }[] = [];
-
     Object.entries(conditions).forEach(([condition, members]) => {
       const pct = (members.length / Math.max(family.length, 1)) * 100;
       risks.push({
@@ -190,7 +162,6 @@ export class FamilyService {
         affectedMembers: members,
       });
     });
-
     return risks.sort((a, b) =>
       ['high','medium','low'].indexOf(a.riskLevel) - ['high','medium','low'].indexOf(b.riskLevel)
     );

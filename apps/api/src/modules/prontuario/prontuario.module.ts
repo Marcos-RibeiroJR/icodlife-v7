@@ -1,10 +1,10 @@
 // apps/api/src/modules/prontuario/prontuario.module.ts
 import { Module } from '@nestjs/common';
 import { ProntuarioService } from './prontuario.service';
-import { ProntuarioController, ProntuarioPublicController } from './prontuario.controller';
+import { ProntuarioController, ProntuarioPublicController, ProntuarioVerifyController } from './prontuario.controller';
 
 @Module({
-  controllers: [ProntuarioController, ProntuarioPublicController],
+  controllers: [ProntuarioController, ProntuarioPublicController, ProntuarioVerifyController],
   providers:   [ProntuarioService],
   exports:     [ProntuarioService],
 })

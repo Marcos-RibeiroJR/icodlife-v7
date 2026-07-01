@@ -10,30 +10,36 @@ export class MedicationsService {
   }
 
   create(userId: string, d: any) {
+    // frequency must be a string per schema
+    const frequency = typeof d.frequency === 'object'
+      ? JSON.stringify(d.frequency)
+      : (d.frequency || 'daily');
+
     return this.prisma.medication.create({
       data: {
         userId,
         name: d.name,
         dosage: d.dosage,
-        frequency: d.frequency || { times: ['08:00'], days: ['mon','tue','wed','thu','fri','sat','sun'] },
+        frequency,
         startDate: new Date(d.startDate || new Date()),
         endDate: d.endDate ? new Date(d.endDate) : undefined,
         prescribingDoctor: d.prescribingDoctor,
         notes: d.notes,
         isActive: true,
-        lastPurchaseDate: d.lastPurchaseDate ? new Date(d.lastPurchaseDate) : undefined,
-        totalPills:     d.totalPills     != null ? Number(d.totalPills)     : undefined,
-        remainingPills: d.remainingPills != null ? Number(d.remainingPills) :
-                        d.totalPills     != null ? Number(d.totalPills)     : undefined,
       },
     });
   }
 
   update(userId: string, id: string, d: any) {
-    const data: any = { ...d };
-    if (d.lastPurchaseDate) data.lastPurchaseDate = new Date(d.lastPurchaseDate);
-    if (d.totalPills     != null) data.totalPills     = Number(d.totalPills);
-    if (d.remainingPills != null) data.remainingPills = Number(d.remainingPills);
+    const data: any = {};
+    if (d.name !== undefined) data.name = d.name;
+    if (d.dosage !== undefined) data.dosage = d.dosage;
+    if (d.frequency !== undefined) data.frequency = typeof d.frequency === 'object' ? JSON.stringify(d.frequency) : d.frequency;
+    if (d.startDate !== undefined) data.startDate = new Date(d.startDate);
+    if (d.endDate !== undefined) data.endDate = d.endDate ? new Date(d.endDate) : null;
+    if (d.prescribingDoctor !== undefined) data.prescribingDoctor = d.prescribingDoctor;
+    if (d.notes !== undefined) data.notes = d.notes;
+    if (d.isActive !== undefined) data.isActive = d.isActive;
     return this.prisma.medication.updateMany({ where: { id, userId }, data });
   }
 
@@ -46,8 +52,10 @@ export class MedicationsService {
       data: {
         medicationId,
         userId,
-        scheduledAt: new Date(d.scheduledAt || new Date()),
-        takenAt: new Date(),
+        takenAt: new Date(d.takenAt || d.scheduledAt || new Date()),
+        wasSkipped: d.wasSkipped ?? false,
+        skipReason: d.skipReason,
+        notes: d.notes,
       },
     });
   }
@@ -55,7 +63,7 @@ export class MedicationsService {
   getAdherence(medicationId: string) {
     return this.prisma.medicationLog.findMany({
       where: { medicationId },
-      orderBy: { scheduledAt: 'desc' },
+      orderBy: { takenAt: 'desc' },
       take: 30,
     });
   }

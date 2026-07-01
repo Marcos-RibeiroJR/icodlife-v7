@@ -9,7 +9,7 @@ export class AuditService {
   async log(
     userId: string | null,
     action: string,
-    resourceType?: string | null,
+    resource?: string | null,
     resourceId?: string | null,
     ip?: string,
     userAgent?: string,
@@ -20,7 +20,7 @@ export class AuditService {
         data: {
           userId,
           action,
-          resourceType,
+          resource: resource ?? 'unknown',
           resourceId,
           ipAddress: ip,
           userAgent,
@@ -28,7 +28,6 @@ export class AuditService {
         },
       });
     } catch (e) {
-      // Nunca deixar falha de audit derrubar a operação principal
       console.error('Audit log failed:', e);
     }
   }

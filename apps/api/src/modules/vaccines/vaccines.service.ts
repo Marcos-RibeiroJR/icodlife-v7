@@ -1,12 +1,11 @@
 // apps/api/src/modules/vaccines/vaccines.service.ts
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { VaccinationStatus } from '@prisma/client';
 
 export interface CreateVaccinationDto {
   vaccineId:    string;
   doseNumber?:  number;
-  status?:      VaccinationStatus;
+  status?:      'completed' | 'scheduled' | 'skipped';
   appliedAt?:   string;
   scheduledAt?: string;
   lotNumber?:   string;
@@ -103,7 +102,7 @@ export class VaccinesService {
         appliedAt,
         scheduledAt: dto.scheduledAt ? new Date(dto.scheduledAt) : undefined,
         nextDoseAt,
-        status: dto.status as VaccinationStatus | undefined,
+        status: dto.status as 'completed' | 'scheduled' | 'skipped' | undefined,
       },
       include: { vaccine: true },
     });

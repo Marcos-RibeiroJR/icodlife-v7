@@ -2,8 +2,9 @@
 // apps/doutor/src/app/dashboard/page.tsx
 import { useEffect, useState } from 'react';
 import DoctorShell from '@/components/ui/DoctorShell';
-import { getMyDoctorProfile, type DoctorProfile } from '@/lib/auth';
+import { getMyDoctorProfile, getToken, type DoctorProfile } from '@/lib/auth';
 import { api } from '@/lib/api';
+import { PushPermissionBanner } from '@/components/push/PushPermissionBanner';
 
 export default function DashboardPage() {
   const [profile, setProfile] = useState<DoctorProfile | null>(null);
@@ -23,6 +24,11 @@ export default function DashboardPage() {
   return (
     <DoctorShell>
       <div className="p-6 max-w-5xl">
+        {/* Push notification opt-in — Sprint 16 */}
+        <div className="mb-4">
+          <PushPermissionBanner authToken={getToken()} />
+        </div>
+
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-xl font-bold text-slate-800">

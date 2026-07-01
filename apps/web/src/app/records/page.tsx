@@ -1,26 +1,26 @@
 'use client';
-// apps/web/src/app/records/page.tsx
+// apps/web/src/app/records/page.tsx — Biblioteca de Exames com OCR + confirmação de itens
 import { useState, useEffect, useCallback } from 'react';
 import { AppLayout } from '../../components/layout/AppLayout';
-import { recordsApi } from '../../lib/api';
+import { recordsApi, examResultsApi } from '../../lib/api';
 import { useDropzone } from 'react-dropzone';
 import Link from 'next/link';
 
 const CATEGORIES = ['Todos','Sangue','Cardiologia','Imagem','Neurologia','Outros'];
-const STATUS_BADGE: Record<string, string> = {
-  normal: 'badge-green', alert: 'badge-amber', critical: 'badge-red', pending: 'badge-blue',
-};
-const STATUS_LABEL: Record<string, string> = {
-  normal: '✓ Normal', alert: '⚠ Atenção', critical: '🔴 Crítico', pending: '⏳ Pendente',
-};
+
+interface OcrMarker { marker: string; value: number; unit: string; rawLine?: string; }
+interface OcrResult  { record: any; ocr: { success: boolean; markers: OcrMarker[]; examDate: string|null; labName: string|null; confidence: number; }; message: string; }
 
 export default function RecordsPage() {
-  const [records, setRecords] = useState<any[]>([]);
-  const [filter, setFilter] = useState('Todos');
-  const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [uploadSuccess, setUploadSuccess] = useState(false);
-  const [search, setSearch] = useState('');
+  const [records,       setRecords]       = useState<any[]>([]);
+  const [filter,        setFilter]        = useState('Todos');
+  const [loading,       setLoading]       = useState(true);
+  const [uploading,     setUploading]     = useState(false);
+  const [search,        setSearch]        = useState('');
+  const [ocrResult,     setOcrResult]     = useState<OcrResult | null>(null);
+  const [ocrMarkers,    setOcrMarkers]    = useState<(OcrMarker & { enabled: boolean })[]>([]);
+  const [ocrMeta,       setOcrMeta]       = useState({ examDate: '', labName: '' });
+  const [saving,        setSaving]        = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -34,26 +34,54 @@ export default function RecordsPage() {
     if (!files[0]) return;
     setUploading(true);
     try {
-      await recordsApi.upload(files[0], {
-        title: files[0].name.replace(/\.[^.]+$/, ''),
+      const { data } = await recordsApi.upload(files[0], {
+        title:      files[0].name.replace(/\.[^.]+$/, ''),
         recordType: 'exam',
-        category: 'blood',
+        category:   'blood',
         recordDate: new Date().toISOString().split('T')[0],
       });
-      setUploadSuccess(true);
-      setTimeout(() => setUploadSuccess(false), 3000);
-      load();
-    } catch {} finally { setUploading(false); }
+      // PDF → OCR resultado disponível
+      if (data?.ocr) {
+        setOcrResult(data);
+        setOcrMarkers((data.ocr.markers ?? []).map((m: OcrMarker) => ({ ...m, enabled: true })));
+        setOcrMeta({ examDate: data.ocr.examDate ?? new Date().toISOString().split('T')[0], labName: data.ocr.labName ?? '' });
+      } else {
+        load();
+      }
+    } catch (e: any) {
+      alert(e?.response?.data?.message ?? 'Erro no upload');
+    } finally { setUploading(false); }
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop, accept: { 'application/pdf': ['.pdf'], 'image/*': ['.jpg','.jpeg','.png'] },
   });
 
+  const confirmOcr = async () => {
+    if (!ocrResult) return;
+    setSaving(true);
+    try {
+      const items = ocrMarkers.filter(m => m.enabled && m.value > 0).map(m => ({
+        marker: m.marker, value: m.value, unit: m.unit,
+      }));
+      // Cria ExamResult com os itens confirmados
+      await examResultsApi.create({
+        examDate:  ocrMeta.examDate,
+        labName:   ocrMeta.labName || undefined,
+        examType:  'sangue',
+        items,
+      });
+      setOcrResult(null);
+      load();
+    } catch (e: any) {
+      alert(e?.response?.data?.message ?? 'Erro ao salvar exame');
+    } finally { setSaving(false); }
+  };
+
   const filtered = records.filter(r => {
     const matchCat = filter === 'Todos' || r.category?.toLowerCase().includes(filter.toLowerCase());
-    const matchSearch = !search || r.title?.toLowerCase().includes(search.toLowerCase()) || r.labName?.toLowerCase().includes(search.toLowerCase());
-    return matchCat && matchSearch;
+    const matchSrc = !search || r.title?.toLowerCase().includes(search.toLowerCase());
+    return matchCat && matchSrc;
   });
 
   return (
@@ -68,16 +96,97 @@ export default function RecordsPage() {
           </Link>
         </div>
 
-        {/* Upload */}
-        <div {...getRootProps()} className={`border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all mb-6
-          ${isDragActive ? 'border-blue-400 bg-blue-50' : 'border-slate-200 hover:border-blue-300 hover:bg-blue-50/50'}`}>
-          <input {...getInputProps()} />
-          <div className="text-4xl mb-3">{uploading ? '⏳' : uploadSuccess ? '✅' : '📄'}</div>
-          <div className="font-semibold text-slate-700">
-            {uploading ? 'Processando OCR...' : uploadSuccess ? 'Exame adicionado!' : isDragActive ? 'Solte o arquivo aqui' : 'Arraste um exame ou clique para upload'}
+        {/* Upload dropzone */}
+        {!ocrResult && (
+          <div {...getRootProps()} className={`border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all mb-6
+            ${isDragActive ? 'border-blue-400 bg-blue-50' : 'border-slate-200 hover:border-blue-300 hover:bg-blue-50/50'}`}>
+            <input {...getInputProps()} />
+            <div className="text-4xl mb-3">{uploading ? '⏳' : '📄'}</div>
+            <div className="font-semibold text-slate-700">
+              {uploading ? 'Lendo exame com OCR...' : isDragActive ? 'Solte o arquivo aqui' : 'Arraste um exame PDF ou clique para upload'}
+            </div>
+            <div className="text-sm text-slate-400 mt-1">PDF ou imagem · OCR automático para exames de sangue</div>
           </div>
-          <div className="text-sm text-slate-400 mt-1">PDF ou imagem · Máximo 50MB · OCR automático</div>
-        </div>
+        )}
+
+        {/* ── Modal de confirmação OCR ───────────────────────────────── */}
+        {ocrResult && (
+          <div className="bg-white border border-blue-200 rounded-2xl p-6 mb-6 shadow-sm">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">📋 Confirmar itens extraídos do PDF</h2>
+                <p className="text-sm text-slate-500 mt-0.5">{ocrResult.message}</p>
+                {ocrResult.ocr.confidence > 0 && (
+                  <div className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full mt-1
+                    ${ocrResult.ocr.confidence >= 60 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                    Confiança: {ocrResult.ocr.confidence}%
+                  </div>
+                )}
+              </div>
+              <button onClick={() => setOcrResult(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">✕</button>
+            </div>
+
+            {/* Meta do exame */}
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div>
+                <label className="text-xs text-slate-500 font-medium">Data do exame</label>
+                <input type="date" value={ocrMeta.examDate} onChange={e => setOcrMeta(m => ({ ...m, examDate: e.target.value }))}
+                  className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 font-medium">Laboratório</label>
+                <input type="text" value={ocrMeta.labName} onChange={e => setOcrMeta(m => ({ ...m, labName: e.target.value }))}
+                  placeholder="Nome do laboratório" className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+              </div>
+            </div>
+
+            {/* Marcadores extraídos */}
+            {ocrMarkers.length === 0 ? (
+              <div className="text-center py-8 text-slate-400">
+                <p className="text-sm">Nenhum marcador foi detectado automaticamente.</p>
+                <p className="text-xs mt-1">Use o lançamento manual para inserir os valores.</p>
+                <Link href="/records/new">
+                  <button className="mt-3 text-sm text-blue-600 border border-blue-200 rounded-lg px-4 py-2 hover:bg-blue-50 transition-colors">
+                    Inserir manualmente
+                  </button>
+                </Link>
+              </div>
+            ) : (
+              <>
+                <div className="text-xs text-slate-500 font-medium mb-2">
+                  Revise e corrija os valores antes de salvar — desmarque os que não deseja importar
+                </div>
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                  {ocrMarkers.map((m, i) => (
+                    <div key={i} className={`flex items-center gap-3 p-2.5 rounded-lg border transition-colors
+                      ${m.enabled ? 'border-blue-100 bg-blue-50/40' : 'border-slate-100 bg-slate-50 opacity-50'}`}>
+                      <input type="checkbox" checked={m.enabled}
+                        onChange={e => setOcrMarkers(ms => ms.map((x, j) => j === i ? { ...x, enabled: e.target.checked } : x))}
+                        className="w-4 h-4 rounded accent-blue-600 flex-shrink-0" />
+                      <span className="text-sm font-medium text-slate-700 w-44 truncate">{m.marker}</span>
+                      <input type="number" value={m.value}
+                        onChange={e => setOcrMarkers(ms => ms.map((x, j) => j === i ? { ...x, value: Number(e.target.value) } : x))}
+                        className="w-24 border border-slate-200 rounded-lg px-2 py-1 text-sm text-center focus:ring-1 focus:ring-blue-400 focus:outline-none" />
+                      <input type="text" value={m.unit}
+                        onChange={e => setOcrMarkers(ms => ms.map((x, j) => j === i ? { ...x, unit: e.target.value } : x))}
+                        className="w-24 border border-slate-200 rounded-lg px-2 py-1 text-sm text-center focus:ring-1 focus:ring-blue-400 focus:outline-none" />
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-3 mt-4">
+                  <button onClick={confirmOcr} disabled={saving}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold rounded-xl py-2.5 text-sm transition-colors">
+                    {saving ? 'Salvando...' : `Salvar ${ocrMarkers.filter(m => m.enabled).length} marcador(es)`}
+                  </button>
+                  <button onClick={() => setOcrResult(null)}
+                    className="px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-600 hover:bg-slate-50 transition-colors">
+                    Cancelar
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Filtros */}
         <div className="flex items-center gap-3 mb-5 flex-wrap">
@@ -100,6 +209,7 @@ export default function RecordsPage() {
             <div className="p-10 text-center">
               <div className="text-4xl mb-3">🧪</div>
               <p className="text-slate-400">Nenhum exame encontrado.</p>
+              <p className="text-sm text-slate-300 mt-1">Faça upload de um PDF ou insira manualmente.</p>
             </div>
           )}
           <div className="divide-y divide-slate-50">
@@ -111,27 +221,9 @@ export default function RecordsPage() {
                   <div className="text-sm text-slate-400 mt-0.5">
                     {r.labName && `${r.labName} · `}{new Date(r.recordDate).toLocaleDateString('pt-BR')}
                   </div>
-                  {r.resultNotes && <div className="text-xs text-slate-400 mt-1 truncate">{r.resultNotes}</div>}
                 </div>
-                <span className={STATUS_BADGE[r.resultStatus] ?? 'badge-blue'}>
-                  {STATUS_LABEL[r.resultStatus] ?? r.resultStatus}
-                </span>
-                <div className="flex gap-2">
-                  <button className="text-sm text-blue-600 hover:text-blue-800 font-semibold px-3 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-50 transition-colors"
-                    onClick={async () => {
-                      try { const { data } = await recordsApi.getSignedUrl(r.id); window.open(data.url, '_blank'); }
-                      catch { alert('Arquivo não disponível'); }
-                    }}>
-                    Baixar
-                  </button>
-                  <button className="text-sm text-red-400 hover:text-red-600 font-semibold px-3 py-1.5 rounded-lg border border-red-100 hover:bg-red-50 transition-colors"
-                    onClick={async () => {
-                      if (!confirm('Deletar este exame?')) return;
-                      await recordsApi.delete(r.id); load();
-                    }}>
-                    ✕
-                  </button>
-                </div>
+                <button className="text-sm text-red-400 hover:text-red-600 font-semibold px-3 py-1.5 rounded-lg border border-red-100 hover:bg-red-50 transition-colors"
+                  onClick={async () => { if (!confirm('Deletar este exame?')) return; await recordsApi.delete(r.id); load(); }}>✕</button>
               </div>
             ))}
           </div>
@@ -140,6 +232,13 @@ export default function RecordsPage() {
               {filtered.length} exame{filtered.length > 1 ? 's' : ''} encontrado{filtered.length > 1 ? 's' : ''}
             </div>
           )}
+        </div>
+
+        {/* Link para timeline */}
+        <div className="mt-4 text-center">
+          <Link href="/exam-timeline" className="text-sm text-blue-600 hover:text-blue-800 font-semibold">
+            Ver evolução dos exames de sangue →
+          </Link>
         </div>
       </div>
     </AppLayout>

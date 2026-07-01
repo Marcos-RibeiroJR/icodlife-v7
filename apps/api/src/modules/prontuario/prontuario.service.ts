@@ -1,7 +1,7 @@
 // apps/api/src/modules/prontuario/prontuario.service.ts
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { ShareAccessLevel } from '@prisma/client';
+import { ShareAccessLevel } from '../../generated/prisma';
 import { randomUUID } from 'crypto';
 
 export interface CreateShareDto {
@@ -89,9 +89,7 @@ export class ProntuarioService {
       where: { token },
       data: {
         viewCount: { increment: 1 },
-        accessedAt: new Date(),
         accessedByName: accessorName ?? share.accessedByName,
-        accessIp: accessorIp ?? null,
       },
     });
 
@@ -134,7 +132,7 @@ export class ProntuarioService {
         select: {
           heightCm: true, weightKg: true, bmi: true, bmiCategory: true,
           smokingStatus: true, alcoholStatus: true, exerciseFrequency: true,
-          sleepHoursAvg: true, stressLevel: true, healthScore: true,
+          sleepHoursAvg: true, stressLevel: true,
         },
       }),
     ]);
@@ -154,7 +152,7 @@ export class ProntuarioService {
         orderBy: { examDate: 'desc' },
         take: 10,
         select: {
-          examDate: true, examType: true, labName: true, doctorName: true,
+          examDate: true, examType: true, labName: true,
           aiSummary: true, aiRiskLevel: true,
           items: {
             select: { marker: true, value: true, unit: true, status: true, refMin: true, refMax: true },

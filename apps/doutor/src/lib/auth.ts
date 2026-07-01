@@ -18,6 +18,9 @@ export interface DoctorProfile {
   crmStatus: 'pending' | 'verified' | 'suspended' | 'canceled';
   specialties: string[];
   healthPlans: string[];
+  languages?: string[];
+  education?: any[];
+  certifications?: any[];
   bio?: string;
   consultPrice?: number;
   addressCity?: string;
@@ -66,7 +69,4 @@ export function getToken(): string | null {
   return localStorage.getItem('doutor_token');
 }
 
-export async function getMyDoctorProfile(): Promise<DoctorProfile> {
-  const res = await api.get('/doutor/me');
-  return res.data;
-}
+export async function getMyDoctorProfile(): Promise<DoctorProf

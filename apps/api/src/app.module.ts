@@ -2,7 +2,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
-// MongooseModule removido — nenhum módulo usa Mongoose (tudo via Prisma/PostgreSQL)
+import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { FamilyModule } from './modules/family/family.module';
@@ -16,20 +16,25 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { OphthalmologyModule } from './modules/ophthalmology/ophthalmology.module';
 import { BloodPressureModule } from './modules/blood-pressure/blood-pressure.module';
 import { OccupationalHealthModule } from './modules/occupational-health/occupational-health.module';
-// v7
+import { MentalHealthModule } from './modules/mental-health/mental-health.module';
+import { AsoModule } from './modules/aso/aso.module';
 import { ExamResultsModule } from './modules/exam-results/exam-results.module';
 import { LifestyleModule } from './modules/lifestyle/lifestyle.module';
-// Sprint 6 — Módulo Doutor
 import { DoctorModule } from './modules/doctor/doctor.module';
 import { MeusMedicosModule } from './modules/meus-medicos/meus-medicos.module';
-// Sprint 7 — Prontuário (QR Code sharing)
 import { ProntuarioModule } from './modules/prontuario/prontuario.module';
-// Sprint 8 — Módulo Cirurgia
 import { SurgeryModule } from './modules/surgery/surgery.module';
-// Sprint 10 — Módulo Vacinas
 import { VaccinesModule } from './modules/vaccines/vaccines.module';
-// Sprint 12 — Evolução Corporal
 import { BodyMetricsModule } from './modules/body-metrics/body-metrics.module';
+import { DoctorAgendaModule } from './modules/doctor-agenda/doctor-agenda.module';
+import { DoctorPrescriptionsModule } from './modules/doctor-prescriptions/doctor-prescriptions.module';
+import { DoctorStaffModule } from './modules/doctor-staff/doctor-staff.module';
+import { DoctorFinanceiroModule } from './modules/doctor-financeiro/doctor-financeiro.module';
+import { ChatModule } from './modules/chat/chat.module';
+import { GlucoseModule } from './modules/glucose/glucose.module';
+import { ExportModule } from './modules/export/export.module';
+import { TelemedicineModule } from './modules/telemedicine/telemedicine.module';
+import { PushModule } from './modules/push/push.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { RedisModule } from './common/redis/redis.module';
 import { AuditModule } from './common/audit/audit.module';
@@ -38,6 +43,7 @@ import { AuditModule } from './common/audit/audit.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }]),
+    ScheduleModule.forRoot(),
     PrismaModule,
     RedisModule,
     AuditModule,
@@ -45,4 +51,25 @@ import { AuditModule } from './common/audit/audit.module';
     UsersModule,
     FamilyModule,
     RecordsModule,
-    MenstrualMo
+    MenstrualModule,
+    AiChatModule,
+    ShareModule,
+    MedicationsModule,
+    AppointmentsModule,
+    NotificationsModule,
+    OphthalmologyModule,
+    BloodPressureModule,
+    OccupationalHealthModule,
+    MentalHealthModule,
+    AsoModule,
+    ExamResultsModule,
+    LifestyleModule,
+    DoctorModule,
+    MeusMedicosModule,
+    ProntuarioModule,
+    SurgeryModule,
+    VaccinesModule,
+    BodyMetricsModule,
+    DoctorAgendaModule,
+    DoctorPrescriptionsModule,
+  

@@ -7,4 +7,5 @@ allowBuilds:
   '@prisma/engines': true
   bcrypt: true
   prisma: true
+  protobufjs: false
   unrs-resolver: true

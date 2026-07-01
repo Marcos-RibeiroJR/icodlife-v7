@@ -414,8 +414,13 @@ export class BloodPressureService {
     return [...new Set(recs)]; // deduplica
   }
 
-  // ── Retornar classificação de um par de valores (para o frontend) ──────────
-  classify(sys: number, dia: number): BpClassInfo {
-    return BP_CLASSES[classify(sys, dia)];
+  /** Expõe a função classify como método público para o controller */
+  classify(systolic: number, diastolic: number) {
+    return { systolic, diastolic, classification: classify(systolic, diastolic) };
+  }
+
+  // Regional benchmark (placeholder)
+  async regionalBenchmark(stateCode: string) {
+    return { state: stateCode, avgSystolic: null, avgDiastolic: null, count: 0 };
   }
 }
