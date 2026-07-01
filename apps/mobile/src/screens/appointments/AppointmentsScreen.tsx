@@ -106,7 +106,7 @@ export default function AppointmentsScreen({ navigation }: any) {
               {item.telehealth && (
                 <TouchableOpacity
                   style={[s.actionBtn, s.actionBtnPrimary]}
-                  onPress={() => Alert.alert('Telemedicina', 'Token: ' + item.telemedicineToken ?? 'Aguardando médico iniciar a sala.')}
+                  onPress={() => Alert.alert('Telemedicina', 'Token: ' + (item.telemedicineToken ?? 'Aguardando médico iniciar a sala.'))}
                 >
                   <Text style={s.actionBtnTextPrimary}>Entrar na videochamada</Text>
                 </TouchableOpacity>
@@ -289,4 +289,4 @@ const s = StyleSheet.create({
   toggleThumbOn:   { alignSelf: 'flex-end' },
   saveBtn:         { backgroundColor: '#002B5C', borderRadius: 14, padding: 16, alignItems: 'center', marginTop: 20 },
   saveBtnText:     { color: '#fff', fontSize: 16, fontWeight: '800' },
-});
+})

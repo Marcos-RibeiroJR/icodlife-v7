@@ -18,6 +18,7 @@ import { BloodPressureModule } from './modules/blood-pressure/blood-pressure.mod
 import { OccupationalHealthModule } from './modules/occupational-health/occupational-health.module';
 import { MentalHealthModule } from './modules/mental-health/mental-health.module';
 import { AsoModule } from './modules/aso/aso.module';
+import { CompanyModule } from './modules/company/company.module';
 import { ExamResultsModule } from './modules/exam-results/exam-results.module';
 import { LifestyleModule } from './modules/lifestyle/lifestyle.module';
 import { DoctorModule } from './modules/doctor/doctor.module';
@@ -62,14 +63,11 @@ import { AuditModule } from './common/audit/audit.module';
     OccupationalHealthModule,
     MentalHealthModule,
     AsoModule,
+    CompanyModule,
     ExamResultsModule,
     LifestyleModule,
     DoctorModule,
     MeusMedicosModule,
     ProntuarioModule,
     SurgeryModule,
-    VaccinesModule,
-    BodyMetricsModule,
-    DoctorAgendaModule,
-    DoctorPrescriptionsModule,
-  
+    VaccinesMod

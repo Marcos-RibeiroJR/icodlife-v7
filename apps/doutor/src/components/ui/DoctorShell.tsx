@@ -12,6 +12,7 @@ const NAV = [
   { href: '/agenda',     label: 'Minha Agenda',      icon: '📅' },
   { href: '/receitas',   label: 'Meus Exames',       icon: '📋' },
   { href: '/aso',        label: 'ASO Ocupacional',   icon: '📄' },
+  { href: '/empresas',   label: 'Empresas',          icon: '🏢' },
   { href: '/staff',      label: 'Meu Funcionários',  icon: '🏥' },
   { href: '/financeiro', label: 'Financeiro',        icon: '💰' },
   { href: '/profile',    label: 'Meu Currículo',     icon: '⚕️' },
@@ -69,8 +70,4 @@ export default function DoctorShell({ children }: { children: React.ReactNode })
             className="w-full text-left px-3 py-2 text-xs text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
             Sair
           </button>
-        </div>
-      </aside>
-
-      {/* Main */}
-      <main className="flex-
+        <

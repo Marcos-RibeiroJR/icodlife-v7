@@ -8,6 +8,7 @@ export type AsoResult = 'apto' | 'apto_restricoes' | 'inapto';
 
 export interface CreateAsoDto {
   patientDoctorId?: string;
+  companyId?: string;
   // Empresa
   companyName: string;
   companyCnpj?: string;
@@ -89,12 +90,30 @@ export class AsoService {
 
   async create(userId: string, dto: CreateAsoDto) {
     const doc = await this.getDoctor(userId);
+
+    // Vínculo com empresa cadastrada: puxa os dados automaticamente (snapshot no ASO).
+    let companyId: string | null = null;
+    if (dto.companyId) {
+      const company = await this.prisma.company.findFirst({
+        where: { id: dto.companyId, doctorId: doc.id },
+      });
+      if (!company) throw new NotFoundException('Empresa vinculada não encontrada.');
+      companyId = company.id;
+      const addr = [company.logradouro, company.numero, company.bairro, company.cidade, company.estado]
+        .filter(Boolean).join(', ');
+      dto.companyName    = dto.companyName    || company.razaoSocial;
+      dto.companyCnpj    = dto.companyCnpj    || company.cnpj;
+      dto.companyAddress = dto.companyAddress || addr || undefined;
+      dto.companyPhone   = dto.companyPhone   || company.telefonePrincipal || company.telefoneRh || undefined;
+    }
+
     this.validate(dto);
 
     return this.prisma.aso.create({
       data: {
         doctorId:        doc.id,
         patientDoctorId: dto.patientDoctorId ?? null,
+        companyId,
         companyName:     dto.companyName,
         companyCnpj:     dto.companyCnpj,
         companyAddress:  dto.companyAddress,
@@ -162,18 +181,4 @@ export class AsoService {
 
   async cancel(userId: string, id: string) {
     const doc = await this.getDoctor(userId);
-    const existing = await this.prisma.aso.findFirst({ where: { id, doctorId: doc.id } });
-    if (!existing) throw new NotFoundException('ASO não encontrado');
-    return this.prisma.aso.update({ where: { id }, data: { status: 'canceled' } });
-  }
-
-  private validate(dto: CreateAsoDto) {
-    if (!dto.companyName) throw new BadRequestException('Razão social da empresa é obrigatória.');
-    if (!dto.workerName) throw new BadRequestException('Nome do trabalhador é obrigatório.');
-    if (!dto.examType || !EXAM_TYPES.includes(dto.examType)) throw new BadRequestException('Tipo de exame inválido.');
-    if (!dto.result || !RESULTS.includes(dto.result)) throw new BadRequestException('Parecer médico inválido.');
-    if (dto.result === 'apto_restricoes' && !dto.restrictions) {
-      throw new BadRequestException('Para "Apto com restrições" é necessário descrever as restrições.');
-    }
-  }
-}
+    const ex

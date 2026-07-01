@@ -836,6 +836,7 @@ model Doctor {
   examOrders           DoctorExamOrder[]
   asos                 Aso[]
   staff                DoctorStaff[]
+  companies            Company[]
   cashEntries          DoctorCashEntry[]
   chatRooms            ChatRoom[]
 
@@ -1052,6 +1053,8 @@ model Aso {
   doctor             Doctor         @relation(fields: [doctorId], references: [id], onDelete: Cascade)
   patientDoctorId    String?        @map("patient_doctor_id")
   patientDoctor      PatientDoctor? @relation(fields: [patientDoctorId], references: [id])
+  companyId          String?        @map("company_id")
+  company            Company?       @relation(fields: [companyId], references: [id])
 
   // Empresa
   companyName        String         @map("company_name")
@@ -1099,75 +1102,83 @@ model Aso {
   @@map("asos")
 }
 
+// EMPRESA — cadastro de empresas clientes (Medicina do Trabalho). NÃO faz login.
+model Company {
+  id                 String    @id @default(uuid())
+  doctorId           String    @map("doctor_id")
+  doctor             Doctor    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  asos               Aso[]
+
+  // Identificação
+  razaoSocial        String    @map("razao_social")
+  nomeFantasia       String?   @map("nome_fantasia")
+  cnpj               String
+  inscricaoEstadual  String?   @map("inscricao_estadual")
+  inscricaoMunicipal String?   @map("inscricao_municipal")
+  cnaePrincipal      String?   @map("cnae_principal")
+  cnaeSecundario     String?   @map("cnae_secundario")
+  grauRisco          Int?      @map("grau_risco")
+  naturezaJuridica   String?   @map("natureza_juridica")
+  codigoFpas         String?   @map("codigo_fpas")
+  codigoTerceiros    String?   @map("codigo_terceiros")
+  regimeTributario   String?   @map("regime_tributario")
+  porte              String?
+  dataFundacao       DateTime? @map("data_fundacao")
+  situacao           String    @default("ativa")
+
+  // Endereço
+  cep                String?
+  logradouro         String?
+  numero             String?
+  complemento        String?
+  bairro             String?
+  cidade             String?
+  estado             String?
+  pais               String?   @default("Brasil")
+  latitude           Float?
+  longitude          Float?
+
+  // Contato
+  telefonePrincipal  String?   @map("telefone_principal")
+  telefoneRh         String?   @map("telefone_rh")
+  whatsapp           String?
+  emailRh            String?   @map("email_rh")
+  emailSst           String?   @map("email_sst")
+  site               String?
+
+  // Trabalhistas (básico)
+  qtdFuncionarios    Int?      @map("qtd_funcionarios")
+  qtdTerceiros       Int?      @map("qtd_terceiros")
+  qtdEstagiarios     Int?      @map("qtd_estagiarios")
+  qtdAprendizes      Int?      @map("qtd_aprendizes")
+  turnos             String?
+  funcionamento24h   Boolean   @default(false) @map("funcionamento_24h")
+  sindicatoPatronal  String?   @map("sindicato_patronal")
+  sindicatoEmpregados String?  @map("sindicato_empregados")
+  convencaoColetiva  String?   @map("convencao_coletiva")
+
+  // Grupos complexos (JSON) — escaláveis e opcionais
+  responsaveis       Json?     // { rh:{nome,cpf,tel,email}, sst:{...,creaCrm}, representante:{...,cargo} }
+  medicina           Json?     // flags PCMSO/PGR/LTCAT/... + dados do PCMSO e PGR
+  esocial            Json?     // config e credenciais eSocial
+  financeiro         Json?     // plano, licenças, valores, renovação
+  config             Json?     // logo, cores, idioma, fuso, ASO, notificações, IA
+  metadata           Json?     // dados extras do enriquecimento (BrasilAPI: qsa, capital social, etc.)
+
+  // Auditoria
+  status             String    @default("active")
+  version            Int       @default(1)
+  createdBy          String?   @map("created_by")
+  updatedBy          String?   @map("updated_by")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  @@unique([doctorId, cnpj])
+  @@index([doctorId, razaoSocial])
+  @@map("companies")
+}
+
 model DoctorExamOrder {
   id               String         @id @default(uuid())
   doctorId         String         @map("doctor_id")
-  doctor           Doctor         @relation(fields: [doctorId], references: [id], onDelete: Cascade)
-  patientDoctorId  String?        @map("patient_doctor_id")
-  patientDoctor    PatientDoctor? @relation(fields: [patientDoctorId], references: [id])
-  patientName      String         @map("patient_name")
-  patientAge       Int?           @map("patient_age")
-  patientIcode     String?        @map("patient_icode")
-  exams            Json
-  clinicalInfo     String?        @db.Text @map("clinical_info")
-  urgency          String         @default("routine")
-  notes            String?        @db.Text
-  status           String         @default("active")
-  createdAt        DateTime       @default(now()) @map("created_at")
-  updatedAt        DateTime       @updatedAt @map("updated_at")
-
-  @@index([doctorId])
-  @@map("doctor_exam_orders")
-}
-
-// ── Sprint 18: Funcionários ───────────────────────────────────────────────────
-model DoctorStaff {
-  id         String    @id @default(uuid())
-  doctorId   String    @map("doctor_id")
-  doctor     Doctor    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
-  userId     String    @map("user_id")
-  user       User      @relation(fields: [userId], references: [id])
-  role       String    @default("assistant")
-  customRole String?   @map("custom_role")
-  status     String    @default("active")
-  notes      String?   @db.Text
-  startedAt  DateTime  @default(now()) @map("started_at")
-  endedAt    DateTime? @map("ended_at")
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
-
-  @@index([doctorId])
-  @@map("doctor_staff")
-}
-
-// ── Sprint 19: Financeiro ─────────────────────────────────────────────────────
-model DoctorCashEntry {
-  id             String            @id @default(uuid())
-  doctorId       String            @map("doctor_id")
-  doctor         Doctor            @relation(fields: [doctorId], references: [id], onDelete: Cascade)
-  appointmentId  String?           @map("appointment_id")
-  appointment    DoctorAppointment? @relation(fields: [appointmentId], references: [id])
-  type           String
-  category       String
-  description    String
-  amount         Decimal
-  paymentMethod  String            @default("cash") @map("payment_method")
-  entryDate      DateTime          @map("entry_date")
-  patientName    String?           @map("patient_name")
-  notes          String?           @db.Text
-  createdAt      DateTime          @default(now()) @map("created_at")
-  updatedAt      DateTime          @updatedAt @map("updated_at")
-
-  @@index([doctorId, entryDate])
-  @@map("doctor_cash_entries")
-}
-
-// ── Sprint 20: Chat WebSocket ─────────────────────────────────────────────────
-model ChatRoom {
-  id            String        @id @default(uuid())
-  doctorId      String        @map("doctor_id")
-  doctor        Doctor        @relation(fields: [doctorId], references: [id], onDelete: Cascade)
-  patientId     String        @map("patient_id")
-  patient       User          @relation("PatientChatRooms", fields: [patientId], references: [id])
-  lastMessageAt DateTime?     @map("last_message_at")
-  createdAt     DateTime      @default(now()) @map(
+  doctor           Doctor         @relation(fields: [doctorId], references: [id], onDelete: Cascade

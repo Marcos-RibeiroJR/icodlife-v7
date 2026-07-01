@@ -3,7 +3,7 @@
 // Módulo ASO — Atestado de Saúde Ocupacional (NR-07). Emissão, listagem e impressão.
 import { useEffect, useState, useCallback } from 'react';
 import DoctorShell from '@/components/ui/DoctorShell';
-import { asoApi } from '@/lib/api';
+import { asoApi, empresaApi } from '@/lib/api';
 
 const EXAM_TYPES = [
   { key: 'admissional',    label: 'Admissional' },
@@ -32,6 +32,7 @@ const RESULT_BADGE: Record<string, string> = {
 };
 
 const EMPTY = {
+  companyId: '',
   companyName: '', companyCnpj: '', companyAddress: '', companyPhone: '',
   workerName: '', workerCpf: '', workerRg: '', workerBirthDate: '', workerSex: '',
   workerRole: '', workerSector: '', workerRegistration: '', admissionDate: '',
@@ -136,6 +137,7 @@ export default function AsoPage() {
   const [form, setForm] = useState({ ...EMPTY });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [companies, setCompanies] = useState<any[]>([]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -146,10 +148,25 @@ export default function AsoPage() {
 
   const openForm = () => {
     setError('');
+    empresaApi.list().then(r => setCompanies(r.data?.data ?? [])).catch(() => setCompanies([]));
     asoApi.context()
       .then(r => setForm({ ...EMPTY, ...r.data, examDate: new Date().toISOString().slice(0, 10) }))
       .catch(() => setForm({ ...EMPTY, examDate: new Date().toISOString().slice(0, 10) }));
     setShowForm(true);
+  };
+
+  const selectCompany = (id: string) => {
+    const c = companies.find(x => x.id === id);
+    if (!c) { setForm(f => ({ ...f, companyId: '' })); return; }
+    const addr = [c.logradouro, c.numero, c.bairro, c.cidade, c.estado].filter(Boolean).join(', ');
+    setForm(f => ({
+      ...f,
+      companyId: c.id,
+      companyName: c.razaoSocial ?? '',
+      companyCnpj: c.cnpj ?? '',
+      companyAddress: addr,
+      companyPhone: c.telefonePrincipal ?? c.telefoneRh ?? '',
+    }));
   };
 
   const toggle = (field: 'risks' | 'complementaryExams', value: string) =>
@@ -199,6 +216,14 @@ export default function AsoPage() {
         {showForm && (
           <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-6 mb-6">
             <Section title="1. Dados da Empresa">
+              <Field l="Empresa cadastrada" full>
+                <select className={inp} value={form.companyId} onChange={e => selectCompany(e.target.value)}>
+                  <option value="">— Selecione para preencher automaticamente —</option>
+                  {companies.map(c => (
+                    <option key={c.id} value={c.id}>{c.nomeFantasia || c.razaoSocial}</option>
+                  ))}
+                </select>
+              </Field>
               <Field l="Razão Social *"><input className={inp} value={form.companyName} onChange={e => setForm(f => ({ ...f, companyName: e.target.value }))} /></Field>
               <Field l="CNPJ"><input className={inp} value={form.companyCnpj} onChange={e => setForm(f => ({ ...f, companyCnpj: e.target.value }))} /></Field>
               <Field l="Endereço" full><input className={inp} value={form.companyAddress} onChange={e => setForm(f => ({ ...f, companyAddress: e.target.value }))} /></Field>
@@ -309,34 +334,4 @@ export default function AsoPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${RESULT_BADGE[a.result] ?? 'bg-slate-100 text-slate-600'}`}>
-                    {RESULT_LABEL[a.result] ?? a.result}
-                  </span>
-                  <button onClick={() => printAso(a)} className="text-xs text-blue-600 hover:underline font-medium">🖨️ Imprimir</button>
-                  {a.status !== 'canceled' && <button onClick={() => cancel(a.id)} className="text-xs text-slate-400 hover:text-red-500">Cancelar</button>}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </DoctorShell>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <h3 className="font-bold text-slate-700 text-sm mb-2">{title}</h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{children}</div>
-    </div>
-  );
-}
-function Field({ l, full, children }: { l: string; full?: boolean; children: React.ReactNode }) {
-  return (
-    <div className={full ? 'sm:col-span-2' : ''}>
-      <label className="text-xs font-medium text-slate-500 mb-1 block">{l}</label>
-      {children}
-    </div>
-  );
-}
+                  <span className={`text-xs font-semibold px-2.5 py-1 rounde

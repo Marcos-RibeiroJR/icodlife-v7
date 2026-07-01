@@ -299,7 +299,7 @@ export default function OphthalmologyScreen() {
         return;
       }
       const score = canSee ? currentLevel.score : (levelIdx > 0 ? LEVELS[levelIdx - 1].score : 0);
-      answerContrast(contrastPhase, score);
+      if (contrastPhase !== 'done') answerContrast(contrastPhase, score);
       setLevelIdx(0);
     };
 
@@ -423,5 +423,4 @@ const s = StyleSheet.create({
   symBtn:         { borderRadius: 12, borderWidth: 2, borderColor: '#e2e8f0', paddingVertical: 12, paddingHorizontal: 14, marginBottom: 8 },
   symBtnActive:   { borderColor: '#3b82f6', backgroundColor: '#eff6ff' },
   symBtnText:     { fontSize: 14, color: '#475569' },
-  symBtnTextActive:{ color: '#1d4ed8', fontWeight: '600' },
-});
+  symBtnTextActive:{ color: '#1d4e
