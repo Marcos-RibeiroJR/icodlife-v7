@@ -15,7 +15,7 @@ class UnregisterTokenDto {
   token!: string;
 }
 
-@Controller('api/v1/push')
+@Controller('push')
 @UseGuards(JwtAuthGuard)
 export class PushController {
   constructor(private pushService: PushService) {}
