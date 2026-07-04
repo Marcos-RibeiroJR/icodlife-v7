@@ -189,4 +189,24 @@ export const glucoseApi = {
   listHbA1c:    ()              => api.get('/glucose/hba1c'),
 };
 
-// ── Sprint 12 — Exportação PDF �
+// ── Sprint 12 — Exportação PDF ───────────────────────────────────────────────
+export const exportApi = {
+  downloadMyPdf: async () => {
+    const token = useAuthStore.getState().accessToken;
+    const base  = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+    const res   = await fetch(`${base}/export/pdf/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error('Falha ao gerar PDF');
+    return res.blob();
+  },
+  downloadPatientPdf: async (userId: string) => {
+    const token = useAuthStore.getState().accessToken;
+    const base  = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+    const res   = await fetch(`${base}/export/pdf/${userId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error('Falha ao gerar PDF');
+    return res.blob();
+  },
+};

@@ -448,4 +448,19 @@ export default function MeuPacientePage() {
               className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
                 tab === t.id
                   ? 'bg-white text-slate-800 shadow-sm'
-                  : 'tex
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Conteúdo */}
+        {tab === 'meus'      && <MeusPacientes />}
+        {tab === 'adicionar' && <AdicionarPaciente />}
+        {tab === 'doutores'  && <DoutoresIcodLife />}
+      </div>
+    </DoctorShell>
+  );
+}

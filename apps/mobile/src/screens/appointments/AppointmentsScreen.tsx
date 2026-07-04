@@ -289,4 +289,4 @@ const s = StyleSheet.create({
   toggleThumbOn:   { alignSelf: 'flex-end' },
   saveBtn:         { backgroundColor: '#002B5C', borderRadius: 14, padding: 16, alignItems: 'center', marginTop: 20 },
   saveBtnText:     { color: '#fff', fontSize: 16, fontWeight: '800' },
-})
+});

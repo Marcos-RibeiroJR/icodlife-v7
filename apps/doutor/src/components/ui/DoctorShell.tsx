@@ -70,4 +70,13 @@ export default function DoctorShell({ children }: { children: React.ReactNode })
             className="w-full text-left px-3 py-2 text-xs text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
             Sair
           </button>
-        <
+        </div>
+      </aside>
+
+      {/* Main */}
+      <main className="flex-1 overflow-auto">
+        {children}
+      </main>
+    </div>
+  );
+}

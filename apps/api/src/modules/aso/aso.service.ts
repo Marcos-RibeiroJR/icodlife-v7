@@ -181,4 +181,18 @@ export class AsoService {
 
   async cancel(userId: string, id: string) {
     const doc = await this.getDoctor(userId);
-    const ex
+    const existing = await this.prisma.aso.findFirst({ where: { id, doctorId: doc.id } });
+    if (!existing) throw new NotFoundException('ASO não encontrado');
+    return this.prisma.aso.update({ where: { id }, data: { status: 'canceled' } });
+  }
+
+  private validate(dto: CreateAsoDto) {
+    if (!dto.companyName) throw new BadRequestException('Razão social da empresa é obrigatória.');
+    if (!dto.workerName) throw new BadRequestException('Nome do trabalhador é obrigatório.');
+    if (!dto.examType || !EXAM_TYPES.includes(dto.examType)) throw new BadRequestException('Tipo de exame inválido.');
+    if (!dto.result || !RESULTS.includes(dto.result)) throw new BadRequestException('Parecer médico inválido.');
+    if (dto.result === 'apto_restricoes' && !dto.restrictions) {
+      throw new BadRequestException('Para "Apto com restrições" é necessário descrever as restrições.');
+    }
+  }
+}

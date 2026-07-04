@@ -334,4 +334,34 @@ export default function AsoPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className={`text-xs font-semibold px-2.5 py-1 rounde
+                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${RESULT_BADGE[a.result] ?? 'bg-slate-100 text-slate-600'}`}>
+                    {RESULT_LABEL[a.result] ?? a.result}
+                  </span>
+                  <button onClick={() => printAso(a)} className="text-xs text-blue-600 hover:underline font-medium">🖨️ Imprimir</button>
+                  {a.status !== 'canceled' && <button onClick={() => cancel(a.id)} className="text-xs text-slate-400 hover:text-red-500">Cancelar</button>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </DoctorShell>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <h3 className="font-bold text-slate-700 text-sm mb-2">{title}</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{children}</div>
+    </div>
+  );
+}
+function Field({ l, full, children }: { l: string; full?: boolean; children: React.ReactNode }) {
+  return (
+    <div className={full ? 'sm:col-span-2' : ''}>
+      <label className="text-xs font-medium text-slate-500 mb-1 block">{l}</label>
+      {children}
+    </div>
+  );
+}

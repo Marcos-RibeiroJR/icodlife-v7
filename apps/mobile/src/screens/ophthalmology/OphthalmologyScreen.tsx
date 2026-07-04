@@ -423,4 +423,5 @@ const s = StyleSheet.create({
   symBtn:         { borderRadius: 12, borderWidth: 2, borderColor: '#e2e8f0', paddingVertical: 12, paddingHorizontal: 14, marginBottom: 8 },
   symBtnActive:   { borderColor: '#3b82f6', backgroundColor: '#eff6ff' },
   symBtnText:     { fontSize: 14, color: '#475569' },
-  symBtnTextActive:{ color: '#1d4e
+  symBtnTextActive:{ color: '#1d4ed8', fontWeight: '600' },
+});

@@ -1181,4 +1181,159 @@ model Company {
 model DoctorExamOrder {
   id               String         @id @default(uuid())
   doctorId         String         @map("doctor_id")
-  doctor           Doctor         @relation(fields: [doctorId], references: [id], onDelete: Cascade
+  doctor           Doctor         @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  patientDoctorId  String?        @map("patient_doctor_id")
+  patientDoctor    PatientDoctor? @relation(fields: [patientDoctorId], references: [id])
+  patientName      String         @map("patient_name")
+  patientAge       Int?           @map("patient_age")
+  patientIcode     String?        @map("patient_icode")
+  exams            Json
+  clinicalInfo     String?        @db.Text @map("clinical_info")
+  urgency          String         @default("routine")
+  notes            String?        @db.Text
+  status           String         @default("active")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  @@index([doctorId])
+  @@map("doctor_exam_orders")
+}
+
+// ── Sprint 18: Funcionários ───────────────────────────────────────────────────
+model DoctorStaff {
+  id         String    @id @default(uuid())
+  doctorId   String    @map("doctor_id")
+  doctor     Doctor    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  userId     String    @map("user_id")
+  user       User      @relation(fields: [userId], references: [id])
+  role       String    @default("assistant")
+  customRole String?   @map("custom_role")
+  status     String    @default("active")
+  notes      String?   @db.Text
+  startedAt  DateTime  @default(now()) @map("started_at")
+  endedAt    DateTime? @map("ended_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@index([doctorId])
+  @@map("doctor_staff")
+}
+
+// ── Sprint 19: Financeiro ─────────────────────────────────────────────────────
+model DoctorCashEntry {
+  id             String            @id @default(uuid())
+  doctorId       String            @map("doctor_id")
+  doctor         Doctor            @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  appointmentId  String?           @map("appointment_id")
+  appointment    DoctorAppointment? @relation(fields: [appointmentId], references: [id])
+  type           String
+  category       String
+  description    String
+  amount         Decimal
+  paymentMethod  String            @default("cash") @map("payment_method")
+  entryDate      DateTime          @map("entry_date")
+  patientName    String?           @map("patient_name")
+  notes          String?           @db.Text
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  @@index([doctorId, entryDate])
+  @@map("doctor_cash_entries")
+}
+
+// ── Sprint 20: Chat WebSocket ─────────────────────────────────────────────────
+model ChatRoom {
+  id            String        @id @default(uuid())
+  doctorId      String        @map("doctor_id")
+  doctor        Doctor        @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  patientId     String        @map("patient_id")
+  patient       User          @relation("PatientChatRooms", fields: [patientId], references: [id])
+  lastMessageAt DateTime?     @map("last_message_at")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  messages      ChatMessage[]
+
+  @@unique([doctorId, patientId])
+  @@map("chat_rooms")
+}
+
+model ChatMessage {
+  id         String    @id @default(uuid())
+  roomId     String    @map("room_id")
+  room       ChatRoom  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  senderId   String    @map("sender_id")
+  sender     User      @relation("SentMessages", fields: [senderId], references: [id])
+  body       String    @db.Text
+  readAt     DateTime? @map("read_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([roomId, createdAt])
+  @@map("chat_messages")
+}
+
+// ── Sprint 14: Glicemia / Módulo Diabetes ─────────────────────────────────────
+model GlucoseReading {
+  id          String         @id @default(uuid())
+  userId      String         @map("user_id")
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  value       Decimal        // mg/dL
+  context     GlucoseContext @default(random)
+  measuredAt  DateTime       @map("measured_at")
+  notes       String?        @db.Text
+  // Contexto adicional
+  carbsGrams  Int?           @map("carbs_grams")   // carboidratos ingeridos
+  insulinUnits Decimal?      @map("insulin_units") // unidades de insulina aplicadas
+  exerciseBefore Boolean?    @default(false) @map("exercise_before")
+  sick        Boolean?       @default(false)       // doente no dia
+  // Alertas
+  alertLevel  String?        @map("alert_level")   // normal | pre_diabetes | high | low | critical_high | critical_low
+  alertSent   Boolean        @default(false) @map("alert_sent")
+  createdAt   DateTime       @default(now()) @map("created_at")
+
+  @@index([userId, measuredAt])
+  @@map("glucose_readings")
+}
+
+model HbA1cReading {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  value       Decimal  // percentual (ex: 6.5)
+  measuredAt  DateTime @map("measured_at")
+  labName     String?  @map("lab_name")
+  estimatedAvgGlucose Decimal? @map("estimated_avg_glucose") // eAG em mg/dL
+  notes       String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([userId, measuredAt])
+  @@map("hba1c_readings")
+}
+
+// ── Sprint 15: Telemedicina ────────────────────────────────────────────────────
+enum TelemedicineStatus {
+  waiting    // paciente aguardando na sala de espera
+  active     // consulta em andamento
+  ended      // consulta encerrada
+  cancelled  // cancelada
+}
+
+model TelemedicineRoom {
+  id            String              @id @default(uuid())
+  token         String              @unique @default(uuid()) // token de acesso seguro
+  doctorId      String              @map("doctor_id")
+  doctor        User                @relation("DoctorRooms", fields: [doctorId], references: [id])
+  patientId     String?             @map("patient_id")
+  patient       User?               @relation("PatientRooms", fields: [patientId], references: [id])
+  appointmentId String?             @map("appointment_id")
+  status        TelemedicineStatus  @default(waiting)
+  patientName   String?             @map("patient_name")   // nome para sala pública
+  reason        String?             @db.Text               // motivo da consulta
+  startedAt     DateTime?           @map("started_at")
+  endedAt       DateTime?           @map("ended_at")
+  durationSecs  Int?                @map("duration_secs")
+  notes         String?             @db.Text               // anotações do médico
+  createdAt     DateTime            @default(now()) @map("created_at")
+
+  @@index([doctorId, status])
+  @@index([token])
+  @@map("telemedicine_rooms")
+}

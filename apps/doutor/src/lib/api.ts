@@ -26,3 +26,23 @@ api.interceptors.response.use(
     return Promise.reject(err);
   },
 );
+
+// ── ASO — Atestado de Saúde Ocupacional ──────────────────────────────────────
+export const asoApi = {
+  context: ()                       => api.get('/doutor/aso/context'),
+  list:    (worker?: string)        => api.get('/doutor/aso', { params: worker ? { worker } : {} }),
+  get:     (id: string)             => api.get(`/doutor/aso/${id}`),
+  create:  (data: any)              => api.post('/doutor/aso', data),
+  update:  (id: string, data: any)  => api.patch(`/doutor/aso/${id}`, data),
+  cancel:  (id: string)             => api.delete(`/doutor/aso/${id}`),
+};
+
+// ── Empresas (Medicina do Trabalho) ──────────────────────────────────────────
+export const empresaApi = {
+  list:       (search?: string)       => api.get('/doutor/empresas', { params: search ? { search } : {} }),
+  get:        (id: string)            => api.get(`/doutor/empresas/${id}`),
+  create:     (data: any)             => api.post('/doutor/empresas', data),
+  update:     (id: string, data: any) => api.patch(`/doutor/empresas/${id}`, data),
+  remove:     (id: string)            => api.delete(`/doutor/empresas/${id}`),
+  lookupCnpj: (cnpj: string)          => api.get(`/doutor/empresas/lookup/${(cnpj || '').replace(/\D/g, '')}`),
+};

@@ -70,4 +70,17 @@ import { AuditModule } from './common/audit/audit.module';
     MeusMedicosModule,
     ProntuarioModule,
     SurgeryModule,
-    VaccinesMod
+    VaccinesModule,
+    BodyMetricsModule,
+    DoctorAgendaModule,
+    DoctorPrescriptionsModule,
+    DoctorStaffModule,
+    DoctorFinanceiroModule,
+    ChatModule,
+    GlucoseModule,
+    ExportModule,
+    TelemedicineModule,
+    PushModule,
+  ],
+})
+export class AppModule {}

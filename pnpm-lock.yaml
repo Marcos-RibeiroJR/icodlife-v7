@@ -18933,4 +18933,18 @@ snapshots:
     dependencies:
       zod: 3.25.76
 
-  zo
+  zod@3.25.76: {}
+
+  zustand@4.5.7(@types/react@18.3.31)(react@18.2.0):
+    dependencies:
+      use-sync-external-store: 1.6.0(react@18.2.0)
+    optionalDependencies:
+      '@types/react': 18.3.31
+      react: 18.2.0
+
+  zustand@4.5.7(@types/react@18.3.31)(react@18.3.1):
+    dependencies:
+      use-sync-external-store: 1.6.0(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 18.3.31
+      react: 18.3.1

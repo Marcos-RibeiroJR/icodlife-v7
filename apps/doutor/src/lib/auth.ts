@@ -69,4 +69,7 @@ export function getToken(): string | null {
   return localStorage.getItem('doutor_token');
 }
 
-export async function getMyDoctorProfile(): Promise<DoctorProf
+export async function getMyDoctorProfile(): Promise<DoctorProfile> {
+  const res = await api.get('/doutor/me');
+  return res.data;
+}
