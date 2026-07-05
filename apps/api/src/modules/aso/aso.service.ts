@@ -2,6 +2,9 @@
 // ASO — Atestado de Saúde Ocupacional (NR-07). Emitido pelo médico examinador.
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import * as QRCode from 'qrcode';
+import { AsoPdfService } from './aso-pdf.service';
+import { createDocumentSignature, verifyDocumentToken } from '../export/export.service';
 
 export type ExamType = 'admissional' | 'periodico' | 'retorno' | 'mudanca_funcao' | 'demissional';
 export type AsoResult = 'apto' | 'apto_restricoes' | 'inapto';
@@ -47,7 +50,10 @@ const RESULTS: AsoResult[] = ['apto', 'apto_restricoes', 'inapto'];
 
 @Injectable()
 export class AsoService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private pdfService: AsoPdfService,
+  ) {}
 
   private async getDoctor(userId: string) {
     const doc = await this.prisma.doctor.findUnique({
@@ -109,7 +115,7 @@ export class AsoService {
 
     this.validate(dto);
 
-    return this.prisma.aso.create({
+    const created = await this.prisma.aso.create({
       data: {
         doctorId:        doc.id,
         patientDoctorId: dto.patientDoctorId ?? null,
@@ -142,6 +148,28 @@ export class AsoService {
         signedAt:        new Date(),
       },
     });
+
+    return this.signAso(created);
+  }
+
+  /** Gera e persiste a assinatura digital (HMAC-SHA256) do ASO. */
+  private async signAso(aso: any) {
+    const sig = createDocumentSignature(aso.id, aso.workerName);
+    return this.prisma.aso.update({
+      where: { id: aso.id },
+      data: {
+        signatureHash:      sig.hash,
+        verifyToken:        sig.token,
+        signatureExpiresAt: new Date(sig.expiresAt),
+        ...(aso.signedAt ? {} : { signedAt: new Date(sig.issuedAt) }),
+      },
+    });
+  }
+
+  /** Garante que o ASO possua assinatura (backfill de registros antigos). */
+  private async ensureSignature(aso: any) {
+    if (aso.verifyToken && aso.signatureHash) return aso;
+    return this.signAso(aso);
   }
 
   async update(userId: string, id: string, dto: Partial<CreateAsoDto>) {
@@ -184,6 +212,64 @@ export class AsoService {
     const existing = await this.prisma.aso.findFirst({ where: { id, doctorId: doc.id } });
     if (!existing) throw new NotFoundException('ASO não encontrado');
     return this.prisma.aso.update({ where: { id }, data: { status: 'canceled' } });
+  }
+
+  /** Gera o PDF assinado do ASO (com QR de validação). */
+  async generatePdf(userId: string, id: string): Promise<{ buffer: Buffer; aso: any }> {
+    const doc = await this.getDoctor(userId);
+    let aso = await this.prisma.aso.findFirst({ where: { id, doctorId: doc.id } });
+    if (!aso) throw new NotFoundException('ASO não encontrado');
+
+    aso = await this.ensureSignature(aso);
+
+    const apiUrl = process.env.API_URL ?? 'https://api.icodlife.com';
+    const verifyUrl = `${apiUrl}/api/v1/aso/verify/${aso.verifyToken}`;
+    const qrDataUrl = await QRCode.toDataURL(verifyUrl, {
+      width: 140, margin: 1, color: { dark: '#002B5C', light: '#FFFFFF' },
+    });
+    const qrBuffer = Buffer.from(qrDataUrl.replace(/^data:image\/png;base64,/, ''), 'base64');
+
+    const buffer = await this.pdfService.generate({ aso, verifyUrl, qrBuffer });
+    return { buffer, aso };
+  }
+
+  /** Verificação pública de autenticidade via token do QR. */
+  async verifyByToken(token: string) {
+    const platform = 'IcodLife / Sou Doutor';
+    const checkedAt = new Date().toISOString();
+    const result = verifyDocumentToken(token);
+    if (!result.valid || !result.sub) {
+      return { valid: false, reason: result.reason ?? 'Token inválido', platform, checkedAt };
+    }
+
+    const aso = await this.prisma.aso.findUnique({ where: { id: result.sub } });
+    if (!aso) {
+      return { valid: false, reason: 'Documento não localizado', platform, checkedAt };
+    }
+    if (aso.status === 'canceled') {
+      return {
+        valid: false,
+        reason: 'ASO cancelado pelo médico examinador',
+        platform, checkedAt,
+        document: 'Atestado de Saúde Ocupacional (NR-07)',
+      };
+    }
+
+    return {
+      valid: true,
+      platform,
+      document: 'Atestado de Saúde Ocupacional (NR-07)',
+      worker: aso.workerName,
+      company: aso.companyName,
+      examType: aso.examType,
+      result: aso.result,
+      examDate: aso.examDate,
+      doctor: `${aso.doctorName} — CRM ${aso.doctorCrm}/${aso.doctorUf}`,
+      issuedAt: result.issuedAt,
+      expiresAt: result.expiresAt,
+      checkedAt,
+      message: '✅ ASO autêntico. Assinatura digital válida.',
+    };
   }
 
   private validate(dto: CreateAsoDto) {

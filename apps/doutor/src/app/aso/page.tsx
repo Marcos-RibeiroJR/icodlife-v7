@@ -47,87 +47,22 @@ function fmtDate(d?: string | null) {
   return d ? new Date(d).toLocaleDateString('pt-BR') : '—';
 }
 
-// ── Impressão do ASO ─────────────────────────────────────────────────────────
-function printAso(a: any) {
-  const w = window.open('', '_blank', 'width=794,height=1123');
-  if (!w) return;
-  const chk = (v: boolean) => v ? '☑' : '☐';
-  const risks: string[] = Array.isArray(a.risks) ? a.risks : [];
-  const exams: string[] = Array.isArray(a.complementaryExams)
-    ? a.complementaryExams.map((e: any) => typeof e === 'string' ? e : e?.name).filter(Boolean) : [];
-  const riskRows = [...RISK_OPTIONS, ...risks.filter(r => !RISK_OPTIONS.includes(r))]
-    .map(r => `<span class="opt">${chk(risks.includes(r))} ${r}</span>`).join('');
-  const examRows = [...EXAM_OPTIONS, ...exams.filter(e => !EXAM_OPTIONS.includes(e))]
-    .map(e => `<span class="opt">${chk(exams.includes(e))} ${e}</span>`).join('');
-  const typeRows = EXAM_TYPES
-    .map(t => `<span class="opt">${chk(a.examType === t.key)} ${t.label}</span>`).join('');
-  const resultRows = RESULTS
-    .map(r => `<span class="opt"><b>${chk(a.result === r.key)} ${r.label}</b></span>`).join('');
-
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
-  <title>ASO — ${a.workerName}</title>
-  <style>
-    @page { size: A4; margin: 16mm; }
-    body { font-family: Arial, sans-serif; font-size: 10.5pt; color: #111; margin: 0; }
-    h1 { font-size: 15pt; text-align: center; margin: 0 0 2px; }
-    .sub { text-align: center; color: #555; font-size: 9pt; margin-bottom: 14px; }
-    .sec { border: 1px solid #bbb; border-radius: 4px; margin-bottom: 10px; }
-    .sec h2 { font-size: 10pt; background: #7B1E1E; color: #fff; margin: 0; padding: 5px 8px; border-radius: 3px 3px 0 0; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px; padding: 8px; }
-    .f { font-size: 9.5pt; } .f b { color: #333; }
-    .full { grid-column: 1 / -1; }
-    .opts { padding: 8px; display: flex; flex-wrap: wrap; gap: 4px 16px; }
-    .opt { font-size: 9.5pt; width: 30%; }
-    .sig { margin-top: 34px; display: flex; justify-content: space-between; }
-    .sig .line { border-top: 1px solid #333; width: 240px; text-align: center; font-size: 9pt; padding-top: 4px; }
-    @media print { button { display: none; } }
-  </style></head><body>
-  <h1>ATESTADO DE SAÚDE OCUPACIONAL (ASO)</h1>
-  <div class="sub">Documento emitido conforme a NR-07 — ICODLIFE / Sou Doutor</div>
-
-  <div class="sec"><h2>1. Dados da Empresa</h2><div class="grid">
-    <div class="f"><b>Razão Social:</b> ${a.companyName ?? ''}</div>
-    <div class="f"><b>CNPJ:</b> ${a.companyCnpj ?? ''}</div>
-    <div class="f full"><b>Endereço:</b> ${a.companyAddress ?? ''}</div>
-    <div class="f"><b>Telefone:</b> ${a.companyPhone ?? ''}</div>
-  </div></div>
-
-  <div class="sec"><h2>2. Dados do Trabalhador</h2><div class="grid">
-    <div class="f"><b>Nome:</b> ${a.workerName ?? ''}</div>
-    <div class="f"><b>CPF:</b> ${a.workerCpf ?? ''}</div>
-    <div class="f"><b>RG:</b> ${a.workerRg ?? ''}</div>
-    <div class="f"><b>Nascimento:</b> ${fmtDate(a.workerBirthDate)}</div>
-    <div class="f"><b>Sexo:</b> ${a.workerSex ?? ''}</div>
-    <div class="f"><b>Matrícula:</b> ${a.workerRegistration ?? ''}</div>
-    <div class="f"><b>Cargo:</b> ${a.workerRole ?? ''}</div>
-    <div class="f"><b>Setor:</b> ${a.workerSector ?? ''}</div>
-    <div class="f"><b>Admissão:</b> ${fmtDate(a.admissionDate)}</div>
-  </div></div>
-
-  <div class="sec"><h2>3. Tipo de Exame — Data: ${fmtDate(a.examDate)}</h2>
-    <div class="opts">${typeRows}</div></div>
-
-  <div class="sec"><h2>4. Função Exercida</h2>
-    <div class="grid"><div class="f full">${a.jobDescription ?? ''}</div></div></div>
-
-  <div class="sec"><h2>5. Riscos Ocupacionais</h2><div class="opts">${riskRows || '<span class="f">Nenhum informado</span>'}</div></div>
-
-  <div class="sec"><h2>6. Exames Complementares</h2><div class="opts">${examRows || '<span class="f">Nenhum informado</span>'}</div></div>
-
-  <div class="sec"><h2>7. Parecer Médico</h2>
-    <div class="opts">${resultRows}</div>
-    <div class="grid">
-      <div class="f full"><b>Restrições:</b> ${a.restrictions ?? ''}</div>
-      <div class="f full"><b>Observações:</b> ${a.observations ?? ''}</div>
-    </div></div>
-
-  <div class="sig">
-    <div class="line">${a.doctorName ?? ''}<br>CRM ${a.doctorCrm ?? ''}/${a.doctorUf ?? ''}${a.doctorSpecialty ? ' — ' + a.doctorSpecialty : ''}<br>Médico Examinador</div>
-    <div class="line">Ciência do Trabalhador<br>${a.workerName ?? ''}</div>
-  </div>
-  <script>window.onload=()=>window.print();</script>
-  </body></html>`);
-  w.document.close();
+// ── Download do PDF assinado do ASO (server-side, com QR de validação) ────────
+async function downloadAsoPdf(a: any) {
+  try {
+    const res = await asoApi.pdf(a.id);
+    const url = URL.createObjectURL(res.data as Blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const safe = (a.workerName || 'aso').normalize('NFD').replace(/[^\w]+/g, '-').toLowerCase();
+    link.download = `aso-${safe}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  } catch {
+    alert('Erro ao gerar o PDF do ASO. Tente novamente.');
+  }
 }
 
 export default function AsoPage() {
@@ -337,7 +272,7 @@ export default function AsoPage() {
                   <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${RESULT_BADGE[a.result] ?? 'bg-slate-100 text-slate-600'}`}>
                     {RESULT_LABEL[a.result] ?? a.result}
                   </span>
-                  <button onClick={() => printAso(a)} className="text-xs text-blue-600 hover:underline font-medium">🖨️ Imprimir</button>
+                  <button onClick={() => downloadAsoPdf(a)} className="text-xs text-blue-600 hover:underline font-medium">📄 Baixar PDF</button>
                   {a.status !== 'canceled' && <button onClick={() => cancel(a.id)} className="text-xs text-slate-400 hover:text-red-500">Cancelar</button>}
                 </div>
               </div>

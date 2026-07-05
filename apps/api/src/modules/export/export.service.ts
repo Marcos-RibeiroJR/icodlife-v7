@@ -52,7 +52,7 @@ export interface SignatureInfo {
   nonce:     string;
 }
 
-function createDocumentSignature(userId: string, userName: string): SignatureInfo {
+export function createDocumentSignature(userId: string, userName: string): SignatureInfo {
   const secret    = process.env.JWT_SECRET ?? 'icodlife-prontuario-secret';
   const nonce     = randomUUID();
   const issuedAt  = new Date().toISOString();

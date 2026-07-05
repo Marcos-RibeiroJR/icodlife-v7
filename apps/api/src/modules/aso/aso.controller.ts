@@ -1,6 +1,6 @@
 // apps/api/src/modules/aso/aso.controller.ts
 import {
-  Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards,
+  Controller, Get, Post, Patch, Delete, Body, Param, Query, Res, UseGuards,
 } from '@nestjs/common';
 import { AsoService } from './aso.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -40,6 +40,18 @@ export class AsoController {
     return this.svc.get(u.id, id);
   }
 
+  /** PDF assinado do ASO (com QR de validação) */
+  @Get(':id/pdf')
+  async pdf(@CurrentUser() u: any, @Param('id') id: string, @Res() res: any) {
+    const { buffer, aso } = await this.svc.generatePdf(u.id, id);
+    const safe = (aso.workerName || 'aso').normalize('NFD').replace(/[^\w]+/g, '-').toLowerCase();
+    const filename = `aso-${safe}-${id.slice(0, 8)}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', buffer.length);
+    res.send(buffer);
+  }
+
   @Patch(':id')
   update(@CurrentUser() u: any, @Param('id') id: string, @Body() dto: any) {
     return this.svc.update(u.id, id, dto);
@@ -48,5 +60,17 @@ export class AsoController {
   @Delete(':id')
   cancel(@CurrentUser() u: any, @Param('id') id: string) {
     return this.svc.cancel(u.id, id);
+  }
+}
+
+// ── Verificação pública de autenticidade (via QR do PDF) ──────────────────────
+@Controller('aso/verify')
+export class AsoVerifyController {
+  constructor(private readonly svc: AsoService) {}
+
+  /** GET /api/v1/aso/verify/:token — valida a assinatura digital do ASO. */
+  @Get(':token')
+  verify(@Param('token') token: string) {
+    return this.svc.verifyByToken(token);
   }
 }

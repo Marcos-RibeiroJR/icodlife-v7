@@ -1095,6 +1095,12 @@ model Aso {
 
   status             String         @default("issued") // issued|canceled
   signedAt           DateTime?      @map("signed_at")
+
+  // Sprint 19 — Assinatura digital (HMAC-SHA256) + QR de validação
+  signatureHash      String?        @map("signature_hash")
+  verifyToken        String?        @map("verify_token") @db.Text
+  signatureExpiresAt DateTime?      @map("signature_expires_at")
+
   createdAt          DateTime       @default(now()) @map("created_at")
   updatedAt          DateTime       @updatedAt @map("updated_at")
 

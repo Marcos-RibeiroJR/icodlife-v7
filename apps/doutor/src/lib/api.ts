@@ -35,6 +35,7 @@ export const asoApi = {
   create:  (data: any)              => api.post('/doutor/aso', data),
   update:  (id: string, data: any)  => api.patch(`/doutor/aso/${id}`, data),
   cancel:  (id: string)             => api.delete(`/doutor/aso/${id}`),
+  pdf:     (id: string)             => api.get(`/doutor/aso/${id}/pdf`, { responseType: 'blob' }),
 };
 
 // ── Empresas (Medicina do Trabalho) ──────────────────────────────────────────
