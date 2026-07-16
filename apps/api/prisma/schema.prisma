@@ -262,6 +262,8 @@ model User {
   menstrualDailyLogs      MenstrualDailyLog[]
   shareTokens             ShareToken[]
   aiHealthChats           AiHealthChat[]
+  healthCheckins          HealthCheckin[]
+  healthSignals           HealthSignal[]
   notifications           Notification[]
   psychosocialAssessments PsychosocialAssessment[]
   mentalHealthAssessments MentalHealthAssessment[]
@@ -543,6 +545,52 @@ model AiHealthChat {
 
   @@index([userId, sessionId])
   @@map("ai_health_chats")
+}
+
+// ── Motor de Sinais e Risco de Saúde (check-in diário) ────────────────────────
+model HealthCheckin {
+  id             String         @id @default(uuid())
+  userId         String         @map("user_id")
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId      String         @map("session_id") // agrupa as mensagens no ai_health_chats
+  checkinDate    DateTime       @map("checkin_date") // dia do check-in (00:00)
+  completed      Boolean        @default(false)
+  questionIndex  Int            @default(0) @map("question_index") // progresso do questionário
+
+  sentimentScore Float?         @map("sentiment_score") // -1..1
+  riskScore      Int            @default(0) @map("risk_score") // 0..100
+  riskLevel      String         @default("low") @map("risk_level") // low|moderate|high
+  trend          String?        // improving|stable|worsening
+  flags          Json           @default("[]") // string[]
+  healthSummary  Json?          @map("health_summary") // { messageCount, bpFactors, notes }
+
+  signals        HealthSignal[]
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  @@unique([userId, checkinDate])
+  @@index([userId, checkinDate])
+  @@map("health_checkins")
+}
+
+model HealthSignal {
+  id         String        @id @default(uuid())
+  userId     String        @map("user_id")
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checkinId  String        @map("checkin_id")
+  checkin    HealthCheckin @relation(fields: [checkinId], references: [id], onDelete: Cascade)
+
+  type       String        // sleep|bp_measured|pain|energy|mood|heavy_meal|medication_adherence|symptom|hydration
+  valueNum   Float?        @map("value_num")
+  valueText  String?       @map("value_text")
+  polarity   String        @default("neutral") // positive|neutral|negative
+  source     String        @default("chat")
+  capturedAt DateTime      @default(now()) @map("captured_at")
+  createdAt  DateTime      @default(now()) @map("created_at")
+
+  @@index([userId, type, capturedAt])
+  @@index([checkinId])
+  @@map("health_signals")
 }
 
 model Notification {

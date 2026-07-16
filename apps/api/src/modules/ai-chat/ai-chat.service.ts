@@ -1,238 +1,300 @@
 // apps/api/src/modules/ai-chat/ai-chat.service.ts
-// HealthBot — schema stores one row per message (sessionId groups them)
+// HealthBot — check-in diário de saúde. Cada resposta é interpretada em sinais
+// estruturados (health_signals) e consolidada num check-in diário (health_checkins)
+// com flags de risco, score e tendência. As mensagens do chat continuam em
+// ai_health_chats (uma linha por mensagem, agrupadas por sessionId).
 
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
-
-export interface ChatMessage {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  timestamp: string;
-}
-
-const DAILY_HEALTH_QUESTIONS = {
-  sleep:       ['Como foi o seu sono esta noite? Dormiu bem? 😴'],
-  bloodpressure: ['Fez alguma aferição de pressão arterial hoje? Se sim, qual foi o resultado?'],
-  pain:        ['Está sentindo alguma dor hoje? Em uma escala de 0 a 10, qual a intensidade?'],
-  energy:      ['Como está seu nível de energia hoje? Sentiu cansaço ou fadiga incomum?'],
-  mood:        ['Como está seu humor hoje? Sentiu ansiedade ou tristeza?'],
-  lifestyle:   ['Comeu alguma refeição pesada hoje (churrasco, fritura, muito sal)?'],
-  symptoms:    ['Teve algum sintoma incomum hoje? Tomou todos os medicamentos nos horários certos?'],
-  nutrition:   ['Como foi sua alimentação hoje? Bebeu água suficiente?'],
-};
+import {
+  DAILY_QUESTIONS,
+  interpretAnswer,
+  computeRisk,
+  buildSummaryMessage,
+  ExtractedSignal,
+} from './health-signals';
 
 @Injectable()
 export class AiChatService {
-  constructor(
-    private prisma: PrismaService,
-    private config: ConfigService,
-  ) {}
+  constructor(private prisma: PrismaService) {}
 
-  // ── INICIAR SESSÃO DIÁRIA ─────────────────────────────────────────────────
+  private startOfToday(): Date {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
 
+  private questionMessage(index: number): { role: 'assistant'; content: string; timestamp: string } {
+    return { role: 'assistant', content: DAILY_QUESTIONS[index].text, timestamp: new Date().toISOString() };
+  }
+
+  // ── INICIAR / RETOMAR SESSÃO DIÁRIA ───────────────────────────────────────
   async startDailySession(userId: string) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // Check if we already have messages today
-    const todayMessage = await this.prisma.aiHealthChat.findFirst({
-      where: { userId, createdAt: { gte: today } },
-      orderBy: { createdAt: 'desc' },
+    const today = this.startOfToday();
+    const checkin = await this.prisma.healthCheckin.findUnique({
+      where: { userId_checkinDate: { userId, checkinDate: today } },
     });
 
-    if (todayMessage) {
-      const sessionId = todayMessage.sessionId;
-      const messages = await this.getSessionMessages(userId, sessionId);
-      return { sessionId, messages, alreadyStarted: true };
+    if (checkin?.completed) {
+      return {
+        alreadyCompleted: true,
+        sessionId: checkin.sessionId,
+        session: { flags: (checkin.flags as string[]) ?? [], riskLevel: checkin.riskLevel },
+      };
     }
 
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { fullName: true, gender: true },
-    });
+    if (checkin) {
+      // Retoma de onde parou.
+      return {
+        alreadyCompleted: false,
+        sessionId: checkin.sessionId,
+        nextQuestion: this.questionMessage(checkin.questionIndex),
+      };
+    }
 
-    const firstName = user!.fullName.split(' ')[0];
+    // Nova sessão do dia.
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId }, select: { fullName: true },
+    });
+    const firstName = user?.fullName?.split(' ')[0] ?? 'tudo bem';
     const hour = new Date().getHours();
     const period = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
-    const greeting = `${period}, ${firstName}! 👋 Sou o HealthBot do IcodLife. Vamos fazer um check-in rápido de saúde?\n\nComo foi o seu sono esta noite? Dormiu bem? 😴`;
+    const greeting = `${period}, ${firstName}! 👋 Sou o HealthBot do IcodLife. Vamos fazer um check-in rápido de saúde?\n\n${DAILY_QUESTIONS[0].text}`;
 
     const sessionId = randomUUID();
-
-    const msg = await this.prisma.aiHealthChat.create({
-      data: {
-        userId,
+    try {
+      await this.prisma.healthCheckin.create({
+        data: { userId, sessionId, checkinDate: today, questionIndex: 0, flags: [] },
+      });
+      await this.prisma.aiHealthChat.create({
+        data: { userId, sessionId, role: 'assistant', content: greeting, metadata: { questionIndex: 0 } as any },
+      });
+      return {
+        alreadyCompleted: false,
         sessionId,
-        role: 'assistant',
-        content: greeting,
-        metadata: { questionIndex: 0 } as any,
-      },
-    });
-
-    return { sessionId, messages: [msg], alreadyStarted: false, nextQuestion: greeting };
+        nextQuestion: { role: 'assistant' as const, content: greeting, timestamp: new Date().toISOString() },
+      };
+    } catch (e: any) {
+      // Corrida (ex.: React StrictMode dispara /start duas vezes): o check-in de
+      // hoje já foi criado pela outra chamada. Retoma em vez de estourar.
+      if (e?.code === 'P2002') {
+        const existing = await this.prisma.healthCheckin.findUnique({
+          where: { userId_checkinDate: { userId, checkinDate: today } },
+        });
+        if (existing) {
+          if (existing.completed) {
+            return {
+              alreadyCompleted: true,
+              sessionId: existing.sessionId,
+              session: { flags: (existing.flags as string[]) ?? [], riskLevel: existing.riskLevel },
+            };
+          }
+          return {
+            alreadyCompleted: false,
+            sessionId: existing.sessionId,
+            nextQuestion: this.questionMessage(existing.questionIndex),
+          };
+        }
+      }
+      throw e;
+    }
   }
 
   // ── ENVIAR MENSAGEM ───────────────────────────────────────────────────────
-
-  async sendMessage(userId: string, userMessage: string, sessionId?: string) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // Get or create session
-    let sid = sessionId;
-    if (!sid) {
-      const todayMsg = await this.prisma.aiHealthChat.findFirst({
-        where: { userId, createdAt: { gte: today } },
-        orderBy: { createdAt: 'desc' },
+  async sendMessage(userId: string, userMessage: string) {
+    const today = this.startOfToday();
+    let checkin = await this.prisma.healthCheckin.findUnique({
+      where: { userId_checkinDate: { userId, checkinDate: today } },
+    });
+    if (!checkin) {
+      await this.startDailySession(userId);
+      checkin = await this.prisma.healthCheckin.findUnique({
+        where: { userId_checkinDate: { userId, checkinDate: today } },
       });
-      if (todayMsg) {
-        sid = todayMsg.sessionId;
-      } else {
-        const { sessionId: newSid } = await this.startDailySession(userId);
-        sid = newSid;
-      }
+    }
+    if (!checkin) throw new Error('Falha ao iniciar o check-in');
+
+    if (checkin.completed) {
+      return {
+        message: 'Você já concluiu o check-in de hoje! Volte amanhã. 🌟',
+        sessionComplete: true,
+        flags: (checkin.flags as string[]) ?? [],
+        sessionId: checkin.sessionId,
+      };
     }
 
-    // Save user message
+    // Registra a resposta do usuário.
     await this.prisma.aiHealthChat.create({
-      data: { userId, sessionId: sid!, role: 'user', content: userMessage },
+      data: { userId, sessionId: checkin.sessionId, role: 'user', content: userMessage },
     });
 
-    // Get conversation history for this session
-    const history = await this.getSessionMessages(userId, sid!);
-    const assistantCount = history.filter(m => m.role === 'assistant').length;
-    const categories = Object.values(DAILY_HEALTH_QUESTIONS);
-    const isComplete = assistantCount >= categories.length + 1;
-
-    let aiContent: string;
-
-    if (isComplete) {
-      // Session wrap-up
-      const userMessages = history.filter(m => m.role === 'user').map(m => m.content);
-      aiContent = this.buildSummary(userMessages);
-    } else {
-      const categoryIndex = Math.min(assistantCount, categories.length - 1);
-      aiContent = categories[categoryIndex][0];
-      const lastUser = [...history].reverse().find(m => m.role === 'user');
-      if (lastUser) {
-        const negative = ['ruim', 'mal', 'dor', 'cansado', 'não', 'péssimo'];
-        if (negative.some(n => lastUser.content.toLowerCase().includes(n))) {
-          aiContent = `Entendo, obrigado por compartilhar. ${aiContent}`;
-        }
-      }
+    // Interpreta a resposta em sinais estruturados e persiste.
+    const currentQuestion = DAILY_QUESTIONS[checkin.questionIndex];
+    const extracted = currentQuestion ? interpretAnswer(currentQuestion.key, userMessage) : [];
+    if (extracted.length) {
+      await this.prisma.healthSignal.createMany({
+        data: extracted.map((s) => ({
+          userId,
+          checkinId: checkin!.id,
+          type: s.type,
+          valueNum: s.valueNum ?? null,
+          valueText: s.valueText ?? null,
+          polarity: s.polarity,
+        })),
+      });
     }
 
-    const aiMsg = await this.prisma.aiHealthChat.create({
+    const nextIndex = checkin.questionIndex + 1;
+    const empathyPrefix = extracted.some((s) => s.polarity === 'negative')
+      ? 'Entendo, obrigado por compartilhar. '
+      : '';
+
+    // Ainda há perguntas.
+    if (nextIndex < DAILY_QUESTIONS.length) {
+      const content = `${empathyPrefix}${DAILY_QUESTIONS[nextIndex].text}`;
+      await this.prisma.aiHealthChat.create({
+        data: { userId, sessionId: checkin.sessionId, role: 'assistant', content, metadata: { questionIndex: nextIndex } as any },
+      });
+      await this.prisma.healthCheckin.update({
+        where: { id: checkin.id }, data: { questionIndex: nextIndex },
+      });
+      return { message: content, sessionComplete: false, sessionId: checkin.sessionId };
+    }
+
+    // Fim do questionário → consolida risco.
+    return this.finalizeCheckin(userId, checkin.id);
+  }
+
+  private async finalizeCheckin(userId: string, checkinId: string) {
+    const signals = await this.prisma.healthSignal.findMany({ where: { checkinId } });
+    const extracted: ExtractedSignal[] = signals.map((s) => ({
+      type: s.type,
+      valueNum: s.valueNum ?? undefined,
+      valueText: s.valueText ?? undefined,
+      polarity: s.polarity as any,
+    }));
+    const risk = computeRisk(extracted);
+    const trend = await this.computeTrend(userId, risk.riskScore);
+    const summary = buildSummaryMessage(risk);
+
+    const checkin = await this.prisma.healthCheckin.findUnique({ where: { id: checkinId } });
+
+    await this.prisma.aiHealthChat.create({
       data: {
-        userId,
-        sessionId: sid!,
-        role: 'assistant',
-        content: aiContent,
-        metadata: { questionIndex: assistantCount, sessionComplete: isComplete } as any,
+        userId, sessionId: checkin!.sessionId, role: 'assistant', content: summary,
+        metadata: { sessionComplete: true, flags: risk.flags } as any,
       },
     });
 
-    return {
-      message: aiContent,
-      sessionId: sid,
-      sessionComplete: isComplete,
-      messageId: aiMsg.id,
-    };
+    const msgCount = await this.prisma.aiHealthChat.count({
+      where: { sessionId: checkin!.sessionId, role: 'user' },
+    });
+
+    await this.prisma.healthCheckin.update({
+      where: { id: checkinId },
+      data: {
+        completed: true,
+        sentimentScore: risk.sentimentScore,
+        riskScore: risk.riskScore,
+        riskLevel: risk.riskLevel,
+        trend,
+        flags: risk.flags,
+        healthSummary: { messageCount: msgCount, bpFactors: risk.bpFactors, notes: risk.notes } as any,
+      },
+    });
+
+    return { message: summary, sessionComplete: true, flags: risk.flags, riskLevel: risk.riskLevel, trend, sessionId: checkin!.sessionId };
   }
 
-  // ── HISTÓRICO ─────────────────────────────────────────────────────────────
+  /** Compara o risco de hoje com a média dos últimos check-ins concluídos. */
+  private async computeTrend(userId: string, todayScore: number): Promise<string> {
+    const prev = await this.prisma.healthCheckin.findMany({
+      where: { userId, completed: true },
+      orderBy: { checkinDate: 'desc' },
+      take: 7,
+    });
+    if (prev.length === 0) return 'stable';
+    const avg = prev.reduce((a, c) => a + c.riskScore, 0) / prev.length;
+    if (todayScore < avg - 5) return 'improving';
+    if (todayScore > avg + 5) return 'worsening';
+    return 'stable';
+  }
 
-  async getChatHistory(userId: string, days = 14) {
+  // ── HISTÓRICO (para a aba Histórico do chat) ──────────────────────────────
+  async getCheckinHistory(userId: string, days = 14) {
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+    const checkins = await this.prisma.healthCheckin.findMany({
+      where: { userId, checkinDate: { gte: since } },
+      orderBy: { checkinDate: 'desc' },
+    });
+    return checkins.map((c) => ({
+      id: c.id,
+      sessionDate: c.checkinDate,
+      completed: c.completed,
+      sentimentScore: c.sentimentScore,
+      riskScore: c.riskScore,
+      riskLevel: c.riskLevel,
+      trend: c.trend,
+      flags: (c.flags as string[]) ?? [],
+      healthSummary: c.healthSummary,
+    }));
+  }
+
+  // ── TENDÊNCIAS AGREGADAS (base do futuro dashboard) ───────────────────────
+  async getTrends(userId: string, period: 'daily' | 'weekly' | 'monthly' | 'annual' = 'daily') {
+    const days = period === 'annual' ? 365 : period === 'monthly' ? 30 : period === 'weekly' ? 90 : 30;
     const since = new Date();
     since.setDate(since.getDate() - days);
 
-    const messages = await this.prisma.aiHealthChat.findMany({
-      where: { userId, createdAt: { gte: since } },
-      orderBy: { createdAt: 'asc' },
+    const checkins = await this.prisma.healthCheckin.findMany({
+      where: { userId, completed: true, checkinDate: { gte: since } },
+      orderBy: { checkinDate: 'asc' },
     });
 
-    // Group by sessionId
-    const sessions = new Map<string, typeof messages>();
-    for (const msg of messages) {
-      if (!sessions.has(msg.sessionId)) sessions.set(msg.sessionId, []);
-      sessions.get(msg.sessionId)!.push(msg);
+    const bucketOf = (d: Date): string => {
+      const dt = new Date(d);
+      if (period === 'annual') return `${dt.getFullYear()}`;
+      if (period === 'monthly') return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+      if (period === 'weekly') {
+        const onejan = new Date(dt.getFullYear(), 0, 1);
+        const week = Math.ceil((((dt.getTime() - onejan.getTime()) / 86400000) + onejan.getDay() + 1) / 7);
+        return `${dt.getFullYear()}-S${String(week).padStart(2, '0')}`;
+      }
+      return dt.toISOString().slice(0, 10);
+    };
+
+    const buckets = new Map<string, { count: number; risk: number; sentiment: number; flags: number }>();
+    const flagTotals: Record<string, number> = {};
+    for (const c of checkins) {
+      const k = bucketOf(c.checkinDate);
+      const b = buckets.get(k) ?? { count: 0, risk: 0, sentiment: 0, flags: 0 };
+      b.count += 1;
+      b.risk += c.riskScore;
+      b.sentiment += Number(c.sentimentScore ?? 0);
+      const fl = (c.flags as string[]) ?? [];
+      b.flags += fl.length;
+      for (const f of fl) flagTotals[f] = (flagTotals[f] ?? 0) + 1;
+      buckets.set(k, b);
     }
 
-    return Array.from(sessions.entries()).map(([sid, msgs]) => ({
-      sessionId: sid,
-      startedAt: msgs[0].createdAt,
-      messageCount: msgs.length,
-      preview: msgs.find(m => m.role === 'user')?.content?.slice(0, 80) ?? '',
-    })).reverse();
-  }
+    const series = Array.from(buckets.entries()).map(([bucket, b]) => ({
+      bucket,
+      checkins: b.count,
+      avgRisk: Math.round(b.risk / b.count),
+      avgSentiment: Number((b.sentiment / b.count).toFixed(2)),
+      flagCount: b.flags,
+    }));
 
-  async getSession(userId: string, sessionId: string) {
-    return this.getSessionMessages(userId, sessionId);
-  }
-
-  // ── MENSTRUAL CONTEXT ─────────────────────────────────────────────────────
-
-  private async getMenstrualContext(userId: string): Promise<any> {
-    try {
-      const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { gender: true } });
-      if (!user || !['female', 'other'].includes(user.gender)) return null;
-
-      const lastCycle = await this.prisma.menstrualCycle.findFirst({
-        where: { userId },
-        orderBy: { startDate: 'desc' },
-      });
-      if (!lastCycle) return null;
-
-      const dayOfCycle = Math.round((Date.now() - lastCycle.startDate.getTime()) / (1000 * 60 * 60 * 24));
-      const cycleLen = lastCycle.cycleLength || 28;
-      const ovDay = Math.round(cycleLen / 2) - 1;
-
-      let phase: string;
-      if (dayOfCycle < (lastCycle.periodLength || 5)) phase = 'menstrual';
-      else if (dayOfCycle < ovDay - 1) phase = 'folicular';
-      else if (dayOfCycle <= ovDay + 1) phase = 'ovulação';
-      else phase = 'lútea';
-
-      const daysUntilNext = cycleLen - dayOfCycle;
-      return { phase, dayOfCycle, daysUntilNext, cycleLen };
-    } catch {
-      return null;
-    }
-  }
-
-  // ── HELPERS ───────────────────────────────────────────────────────────────
-
-  private async getSessionMessages(userId: string, sessionId: string) {
-    return this.prisma.aiHealthChat.findMany({
-      where: { userId, sessionId },
-      orderBy: { createdAt: 'asc' },
-    });
-  }
-
-  private buildSummary(userMessages: string[]): string {
-    const text = userMessages.join(' ').toLowerCase();
-    const negativeKeywords = ['dor', 'ruim', 'cansado', 'fraco', 'mal', 'tontura', 'febre'];
-    const positiveKeywords = ['bem', 'ótimo', 'excelente', 'descansado', 'disposto', 'energia'];
-    const negCount = negativeKeywords.filter(k => text.includes(k)).length;
-    const posCount = positiveKeywords.filter(k => text.includes(k)).length;
-
-    const parts = ['Aqui está o resumo do seu check-in de hoje:'];
-
-    if (posCount > negCount) {
-      parts.push('\n✅ Você parece estar bem hoje! Continue assim. 💪');
-    } else if (negCount > posCount) {
-      parts.push('\n💛 Não parece ter sido um dia fácil. Descanse bem. Se persistir, consulte um médico.');
-    } else {
-      parts.push('\n📊 Dia dentro da normalidade. Informações registradas.');
-    }
-
-    if (/febre|vômito/.test(text)) parts.push('⚠️ Sintomas que podem indicar mal-estar — fique atento.');
-    if (/dor intensa|dor forte|dor 8|dor 9|dor 10/.test(text)) parts.push('🔴 Dor intensa relatada — recomendamos avaliação médica.');
-    if (/não dormi|dormi mal|insônia/.test(text)) parts.push('😴 Sono insuficiente detectado — isso pode elevar a pressão arterial.');
-    if (/não tomei|esqueci o remédio/.test(text)) parts.push('💊 Medicação não tomada — tente manter a regularidade.');
-
-    parts.push('\nRegistros salvos no seu prontuário IcodLife. Até amanhã! 🌟');
-    return parts.join('\n');
+    const totalRisk = checkins.reduce((a, c) => a + c.riskScore, 0);
+    return {
+      period,
+      totalCheckins: checkins.length,
+      avgRisk: checkins.length ? Math.round(totalRisk / checkins.length) : 0,
+      currentTrend: checkins.length ? (checkins[checkins.length - 1].trend ?? 'stable') : 'stable',
+      series,
+      topFlags: Object.entries(flagTotals).sort((a, b) => b[1] - a[1]).map(([flag, count]) => ({ flag, count })),
+    };
   }
 }

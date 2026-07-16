@@ -2,7 +2,6 @@
 import { Controller, Get, Post, Body, Param, Request, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { LifestyleService } from './lifestyle.service';
-import { UpsertLifestyleDto } from './dto/upsert-lifestyle.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('lifestyle')
@@ -10,7 +9,7 @@ export class LifestyleController {
   constructor(private svc: LifestyleService) {}
 
   @Post()
-  upsert(@Request() req: any, @Body() dto: UpsertLifestyleDto) {
+  upsert(@Request() req: any, @Body() dto: any) {
     return this.svc.upsert(req.user.userId, dto);
   }
 

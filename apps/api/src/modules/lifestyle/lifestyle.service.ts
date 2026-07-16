@@ -1,7 +1,6 @@
 // apps/api/src/modules/lifestyle/lifestyle.service.ts
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { UpsertLifestyleDto } from './dto/upsert-lifestyle.dto';
 
 @Injectable()
 export class LifestyleService {
@@ -19,66 +18,54 @@ export class LifestyleService {
     return { bmi: Math.round(bmi * 10) / 10, bmiCategory };
   }
 
-  async upsert(userId: string, dto: UpsertLifestyleDto) {
+  async upsert(userId: string, dto: any) {
+    // Coerção de tipos: a tela pode enviar números como texto e reenviar campos
+    // extras do perfil (id, userId, timestamps). Aqui só aceitamos campos conhecidos,
+    // no tipo correto — nada de rejeitar a requisição inteira.
+    const num = (v: any) => (v === '' || v === null || v === undefined || isNaN(Number(v))) ? undefined : Number(v);
+    const int = (v: any) => { const n = num(v); return n === undefined ? undefined : Math.round(n); };
+    const bool = (v: any) => typeof v === 'boolean' ? v : v === 'true' ? true : v === 'false' ? false : undefined;
+    const arr = (v: any) => Array.isArray(v) ? v : undefined;
+    const str = (v: any) => (typeof v === 'string' && v.trim() !== '') ? v.trim() : undefined;
+
+    const heightCm = num(dto.heightCm);
+    const weightKg = num(dto.weightKg);
     let bmi: number | undefined;
     let bmiCategory: string | undefined;
-
-    if (dto.heightCm && dto.weightKg) {
-      const calc = this.calcBmi(Number(dto.heightCm), Number(dto.weightKg));
+    if (heightCm && weightKg) {
+      const calc = this.calcBmi(heightCm, weightKg);
       bmi = calc.bmi;
       bmiCategory = calc.bmiCategory;
     }
 
     const data: any = {
       // Biometria
-      heightCm:                dto.heightCm,
-      weightKg:                dto.weightKg,
-      waistCm:                 dto.waistCm,
-      bmi,
-      bmiCategory,
-      systolicBp:              dto.systolicBp,
-      diastolicBp:             dto.diastolicBp,
+      heightCm, weightKg, waistCm: num(dto.waistCm), bmi, bmiCategory,
+      systolicBp: int(dto.systolicBp), diastolicBp: int(dto.diastolicBp),
       // Tabagismo
-      smokingStatus:           dto.smokingStatus,
-      cigarettesPerDay:        dto.cigarettesPerDay,
-      smokingYears:            dto.smokingYears,
-      quitDate:                dto.quitDate ? new Date(dto.quitDate) : undefined,
+      smokingStatus: str(dto.smokingStatus), cigarettesPerDay: int(dto.cigarettesPerDay),
+      smokingYears: int(dto.smokingYears), quitDate: dto.quitDate ? new Date(dto.quitDate) : undefined,
       // Álcool
-      alcoholStatus:           dto.alcoholStatus,
-      drinksPerWeek:           dto.drinksPerWeek,
-      alcoholTypes:            dto.alcoholTypes,
+      alcoholStatus: str(dto.alcoholStatus), drinksPerWeek: int(dto.drinksPerWeek), alcoholTypes: arr(dto.alcoholTypes),
       // Atividade física
-      exerciseFrequency:       dto.exerciseFrequency,
-      exerciseTypes:           dto.exerciseTypes,
-      exerciseMinutes:         dto.exerciseMinutes,
+      exerciseFrequency: str(dto.exerciseFrequency), exerciseTypes: arr(dto.exerciseTypes), exerciseMinutes: int(dto.exerciseMinutes),
       // Sono / emocional
-      sleepHoursAvg:           dto.sleepHoursAvg,
-      sleepQuality:            dto.sleepQuality   !== undefined ? Number(dto.sleepQuality)   : undefined,
-      stressLevel:             dto.stressLevel    !== undefined ? Number(dto.stressLevel)    : undefined,
-      moodAvg:                 dto.moodAvg        !== undefined ? Number(dto.moodAvg)        : undefined,
-      mentalHealthDiagnoses:   dto.mentalHealthDiagnoses,
-      therapyFrequency:        dto.therapyFrequency,
+      sleepHoursAvg: num(dto.sleepHoursAvg), sleepQuality: int(dto.sleepQuality),
+      stressLevel: int(dto.stressLevel), moodAvg: int(dto.moodAvg),
+      mentalHealthDiagnoses: arr(dto.mentalHealthDiagnoses), therapyFrequency: str(dto.therapyFrequency),
       // Sexual / reprodutivo
-      sexuallyActive:          dto.sexuallyActive,
-      contraceptionType:       dto.contraceptionType,
-      stdProtection:           dto.stdProtection,
+      sexuallyActive: bool(dto.sexuallyActive), contraceptionType: str(dto.contraceptionType), stdProtection: bool(dto.stdProtection),
       // Trabalho
-      workHoursPerWeek:        dto.workHoursPerWeek,
-      workEnvironment:         dto.workEnvironment,
-      ergonomicRisk:           dto.ergonomicRisk,
-      occupationalChemicals:   dto.occupationalChemicals,
+      workHoursPerWeek: int(dto.workHoursPerWeek), workEnvironment: str(dto.workEnvironment),
+      ergonomicRisk: int(dto.ergonomicRisk), occupationalChemicals: bool(dto.occupationalChemicals),
       // Alimentação
-      dietType:                dto.dietType,
-      mealsPerDay:             dto.mealsPerDay,
-      waterLitersDay:          dto.waterLitersDay,
+      dietType: str(dto.dietType), mealsPerDay: int(dto.mealsPerDay), waterLitersDay: num(dto.waterLitersDay),
       // Localização
-      cityName:                dto.cityName,
-      stateCode:               dto.stateCode,
-      ibgeCode:                dto.ibgeCode,
+      cityName: str(dto.cityName), stateCode: str(dto.stateCode), ibgeCode: str(dto.ibgeCode),
     };
 
-    // Remove undefined fields
-    Object.keys(data).forEach(k => data[k] === undefined && delete data[k]);
+    // Remove campos indefinidos (não sobrescreve o que não veio no formulário).
+    Object.keys(data).forEach((k) => data[k] === undefined && delete data[k]);
 
     const profile = await this.prisma.lifestyleProfile.upsert({
       where: { userId },
@@ -86,16 +73,12 @@ export class LifestyleService {
       update: data,
     });
 
-    // Save snapshot — only fields that exist on LifestyleSnapshot
-    await this.prisma.lifestyleSnapshot.create({
-      data: {
-        userId,
-        heightCm: bmi ? dto.heightCm : undefined,
-        weightKg: dto.weightKg,
-        bmi,
-        notes: undefined,
-      },
-    });
+    // Snapshot histórico (série temporal de peso/IMC) — só quando há biometria.
+    if (heightCm !== undefined || weightKg !== undefined || bmi !== undefined) {
+      await this.prisma.lifestyleSnapshot.create({
+        data: { userId, heightCm, weightKg, bmi },
+      });
+    }
 
     return profile;
   }
