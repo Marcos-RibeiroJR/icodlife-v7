@@ -119,6 +119,8 @@ export const chatApi = {
   start:         ()                   => api.post('/ai-chat/start'),
   sendMessage:   (message: string)    => api.post('/ai-chat/message', { message }),
   getHistory:    (days?: number)      => api.get('/ai-chat/history', { params: { days } }),
+  getTrends:     (period: 'daily' | 'weekly' | 'monthly' | 'annual' = 'daily') =>
+                   api.get('/ai-chat/trends', { params: { period } }),
 };
 
 export const ophthalmologyApi = {

@@ -21,6 +21,7 @@ const NAV_VIDA = [
   { href: '/vida/pressao',        icon: '❤️',  label: 'Pressão Arterial' },
   { href: '/vida/glicemia',       icon: '🩸',  label: 'Glicemia' },
   { href: '/vida/corpo',          icon: '⚖️',  label: 'Evolução Corporal' },
+  { href: '/saude-tendencia',     icon: '📊', label: 'Tendência de Saúde' },
   { href: '/trend-report',        icon: '📋', label: 'Laudo de Tendência' },
 ];
 
