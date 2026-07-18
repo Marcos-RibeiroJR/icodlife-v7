@@ -413,7 +413,7 @@ A stack atual (NestJS + Postgres + Redis, tudo em Docker local) **não precisa v
 > nova sessão, leia aqui o que já está feito, o que falta, e os detalhes técnicos
 > (nomes de arquivos, contas demo) para não perder contexto.
 
-### ✅ Feito (Sprint 21.1, 21.1b, 21.2, 21.2b)
+### ✅ Feito (Sprint 21.1, 21.1b, 21.2, 21.2b, 21.3–21.7)
 
 **Schema (`apps/api/prisma/schema.prisma`)** — adicionado sem quebrar nada existente:
 - Novos models: `Clinic`, `ClinicDoctor`, `ClinicStaff`, `ClinicRoom`, `ClinicProcedure`, `ClinicCounter`.
@@ -443,25 +443,41 @@ A stack atual (NestJS + Postgres + Redis, tudo em Docker local) **não precisa v
 | Médica associada | `dra.fernanda@demo.icodlife.com` |
 | Recepção | `recepcao.centro@demo.icodlife.com` |
 
-### ⚠️ Não testado contra banco real
+**Frontend (`apps/clinica/`, porta 3003)** — app Next.js 14 completo, mesmo padrão de `apps/doutor`:
+- Config base: `package.json` (`@icodlife/clinica`, script `dev` na porta 3003), `next.config.js`, `tsconfig.json`, `tailwind.config.js` (paleta índigo, para diferenciar visualmente de paciente/vermelho e médico/azul), `postcss.config.js`, `.env.local`/`.env.example` (`NEXT_PUBLIC_API_URL=http://localhost:3001/api/v1`).
+- `src/lib/api.ts` — client axios com interceptor de token (`clinica_token` no localStorage) + `clinicApi` cobrindo todas as rotas `/clinic/*` e `/auth/become-clinic-admin`.
+- `src/lib/auth.ts` — `login()` (valida `role === 'clinic_admin'`), `logout()`, `getStoredUser()`, `getMyClinicProfile()`.
+- `src/app/login/page.tsx` — tela de entrada (paleta índigo, "Portal Clínica").
+- `src/app/register/page.tsx` — fluxo de **ativação de clínica em 2 passos**: 1) login com conta ICODLIFE já existente (paciente ou médico) 2) formulário de dados da clínica (razão social, CNPJ, tipo de estabelecimento, endereço) → chama `POST /auth/become-clinic-admin`. Não precisa relogar depois: o token antigo já passa a carregar `role=clinic_admin` porque o `JwtStrategy` busca o role no banco a cada request.
+- `src/components/ui/ClinicShell.tsx` — sidebar/layout autenticado, guarda de rota por `role=clinic_admin`, menu: Dashboard, Médicos, Agenda, Pacientes, Empresas, ASO, Procedimentos, Salas, Equipe, Financeiro, Configurações.
+- Páginas: `dashboard/` (cards de resumo + agenda do dia), `medicos/` (vincular/desvincular médico por ICODE ou CRM.UF, comissão, sala), `agenda/` (filtro por data/médico), `pacientes/` (lista deduplicada com busca), `empresas/`, `aso/` (com badges de resultado apto/inapto), `procedimentos/` (CRUD com preço/duração/TUSS), `salas/` (CRUD simples), `staff/` (adicionar/remover por ICODE ou e-mail, função), `financeiro/` (DRE consolidado + repasse por médico com filtro de data), `configuracoes/` (editar dados cadastrais da clínica).
+- **Validado com o compilador TypeScript real** (`tsc --noEmit` contra os tipos de Next/React já presentes no monorepo) — **0 erros** em todos os arquivos do app. Achou e corrigiu 1 bug real (JSX mal fechado em `register/page.tsx`, causado por um truncamento de arquivo no ambiente de escrita — corrigido e revalidado).
+- **Não rodou `pnpm dev` de verdade** (sandbox sem os pacotes instalados via rede) — só validação estática de tipos/sintaxe.
 
-Nada disso rodou contra um Postgres de verdade ainda — o ambiente de execução usado nesta sessão não tem acesso à rede/Docker da máquina do usuário. **Antes de seguir para o front-end, rodar na máquina local**:
+### ⚠️ Não testado contra ambiente real
+
+Nada disso rodou de ponta a ponta (browser + API + Postgres) ainda. **Rodar na máquina local**:
 ```powershell
 cd apps/api
-npx prisma migrate dev --name sprint21_clinicas_hospitais
-pnpm install          # se necessário
-npx prisma generate
-node prisma/seed-clinic-demo.js
-pnpm dev              # reiniciar a API para carregar o ClinicModule
+npx prisma migrate dev --name sprint21_clinicas_hospitais   # se ainda não rodou
+node prisma/seed-clinic-demo.js                              # se ainda não rodou
+pnpm dev                                                     # API na porta 3001
+
+# em outro terminal
+cd apps/clinica
+pnpm install
+pnpm dev                                                     # painel Clínica na porta 3003
 ```
-Depois, validar manualmente com um cliente HTTP (Insomnia/curl): login como `clinica.centro@demo.icodlife.com` → `GET /clinic/me` → `GET /clinic/doctors` → `GET /clinic/patients` → `GET /clinic/financeiro/dre`.
+Depois, abrir `http://localhost:3003/login` e entrar com `clinica.centro@demo.icodlife.com` / `Demo@12345`. Conferir dashboard, médicos (deve mostrar Dr. Marcos e Dra. Fernanda), agenda, financeiro (DRE + repasse por médico).
 
 ### ⏳ Pendente (próxima sessão)
 
-- **Sprint 21.3 a 21.7 — `apps/clinica` (frontend Next.js)**: ainda não iniciado. É o maior pedaço de trabalho que falta — esqueleto completo (login, layout, dashboard) + todas as telas (`medicos/`, `agenda/`, `pacientes/`, `empresas/`, `aso/`, `procedimentos/`, `financeiro/`, `staff/`, `salas/`), copiando a estrutura de `apps/doutor` e trocando a fonte de dados para `/clinic/*`.
+- Rodar `apps/clinica` de verdade (`pnpm install` + `pnpm dev`) e validar visualmente todas as telas contra a API local.
 - Testes e2e do módulo `clinic` (backend).
 - ASO com cabeçalho de clínica (hoje o PDF só tem dados do médico).
 - Decidir se/como fazer o backfill opcional de `clinicId` nos 400 pacientes de teste e nos registros antigos de médicos que entrarem numa clínica (é uma ação explícita, não automática — ver Seção 8).
+- Corrigir o bug encontrado no login de `apps/web` (porta 3000): a aba "Doutor" retorna "Internal server error" ao tentar logar com uma conta `role=clinic_admin` — investigar `auth.service.ts` (tem um debug logger ativo, `[LOGIN] ...`, que deve apontar a causa no log da API).
+- Seções 10 e 11 do plano (Big Data / Data Lake / ML) seguem como próxima fase depois do módulo Clínicas estar validado ponta a ponta.
 
 ### 📁 Arquivos tocados nesta etapa (para referência rápida)
 ```
@@ -473,5 +489,5 @@ apps/api/src/modules/clinic/clinic.module.ts             (novo)
 apps/api/src/modules/clinic/clinic.controller.ts          (novo)
 apps/api/src/modules/clinic/clinic.service.ts             (novo)
 apps/api/src/modules/clinic/dto/*.ts                      (novo, 6 arquivos)
+apps/clinica/                                             (novo — app Next.js completo, ~20 arquivos)
 ```
-
