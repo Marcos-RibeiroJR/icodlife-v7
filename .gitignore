@@ -49,3 +49,7 @@ apps/api/src/generated/
 
 # pnpm temp leftovers
 _tmp_*
+
+
+# credenciais geradas pelo seed de massa de dados (nao versionar senhas)
+apps/api/prisma/bigdata/*.csv

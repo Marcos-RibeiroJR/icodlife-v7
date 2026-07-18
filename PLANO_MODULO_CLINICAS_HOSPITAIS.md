@@ -404,3 +404,74 @@ A stack atual (NestJS + Postgres + Redis, tudo em Docker local) **não precisa v
 3. Seed: criar 1 `Clinic` demo ("Clínica ICODLIFE Centro") vinculando `dr.marcos@demo.icodlife.com` como `owner`, reaproveitando os 400 usuários de teste já existentes como pacientes da clínica (basta popular `clinicId` nos `PatientDoctor`/`DoctorAppointment` de teste, se quiser simular volume desde já).
 4. `apps/api/src/modules/clinic/` — CRUD básico + `/clinic/doctors` + `/clinic/patients` (agregação simples primeiro, agenda/financeiro depois).
 5. `apps/clinica/` — esqueleto copiado de `apps/doutor` (login + layout + dashboard) rodando na porta 3003.
+
+---
+
+## 12. Status de Execução (atualizado a cada sessão — LER PRIMEIRO ao retomar)
+
+> Esta seção é a fonte da verdade de progresso do módulo. Antes de continuar em uma
+> nova sessão, leia aqui o que já está feito, o que falta, e os detalhes técnicos
+> (nomes de arquivos, contas demo) para não perder contexto.
+
+### ✅ Feito (Sprint 21.1, 21.1b, 21.2, 21.2b)
+
+**Schema (`apps/api/prisma/schema.prisma`)** — adicionado sem quebrar nada existente:
+- Novos models: `Clinic`, `ClinicDoctor`, `ClinicStaff`, `ClinicRoom`, `ClinicProcedure`, `ClinicCounter`.
+- Novos enums: `ClinicDoctorRole` (owner/associated/visiting), `ClinicStaffRole` (admin/reception/financeiro/nurse), `UserRole.clinic_admin`.
+- Colunas opcionais (`clinicId`) em `Company`, `Aso`, `DoctorAppointment` (+ `procedureId`, `roomId`), `DoctorCashEntry`, `ChatRoom`.
+- Relações novas em `User` (`clinicOwned`, `clinicStaff`) e `Doctor` (`clinics`).
+- `Clinic.ownerUserId` é `@unique` (1 clínica por usuário admin, mesmo padrão de `Doctor.userId`).
+- Validado manualmente (sem acesso a banco neste ambiente): balanceamento de chaves/parênteses e checagem cruzada de toda `@relation(fields/references)` contra os models — **0 erros**. `prisma validate` real (com engine) precisa rodar na máquina do usuário antes da migration.
+
+**Backend (`apps/api/src/modules/clinic/`)** — módulo completo:
+- `clinic.module.ts`, `clinic.controller.ts` (2 controllers: `BecomeClinicAdminController` em `/auth/become-clinic-admin`, `ClinicPanelController` em `/clinic/*`), `clinic.service.ts`.
+- DTOs em `dto/`: `create-clinic`, `update-clinic`, `link-doctor`, `clinic-staff`, `clinic-procedure`, `clinic-room` — todos com `class-validator` (respeitam o `ValidationPipe` global whitelist).
+- Registrado em `apps/api/src/app.module.ts` (import + `ClinicModule` na lista de `imports`).
+- Endpoints implementados: `becomeClinicAdmin`, `getMyClinic`, `updateClinic`, `linkDoctor` (busca por ICODE ou `CRM.UF`), `listDoctors`, `unlinkDoctor`, `listPatients` (união deduplicada de `PatientDoctor` de todos os médicos ativos da clínica), `listAgenda` (filtro por data/médico/sala), `listCompanies`, `listAsos`, `createRoom`/`listRooms`, `createProcedure`/`listProcedures`, `addStaff`/`listStaff`/`removeStaff`, `financeiroDre`, `financeiroPorMedico` (aplica `commissionPct`).
+- **Decisão de design importante**: a agregação multi-médico (pacientes/agenda/empresas/ASOs/financeiro) filtra por `doctorId IN (médicos ativos da clínica)` — **não depende de backfill de `clinicId`** nos registros antigos. Um médico que entra numa clínica já aparece "consolidado" imediatamente, sem migração de dados.
+- Confirmado: `JwtStrategy` (`apps/api/src/common/strategies/jwt.strategy.ts`) busca o `role` do usuário no banco a cada request (não fica preso no JWT) — então depois de `become-clinic-admin` o usuário já usa o token atual sem precisar logar de novo.
+
+**Seeds**:
+- `apps/api/prisma/seed-clinic-demo.js` — cria a clínica demo "Clínica ICODLIFE Centro" (CNPJ `12345678000199`), um 2º médico (`dra.fernanda@demo.icodlife.com`, Dermatologia) para provar o conceito multi-médico, vincula Dr. Marcos como sócio (`owner`, 100% comissão) e Dra. Fernanda como associada (70%), 3 salas, 6 procedimentos com preço, e um usuário de recepção (`recepcao.centro@demo.icodlife.com`).
+- Script de conveniência: `pnpm --filter api run db:seed:clinic-demo`.
+
+**Contas demo do módulo Clínicas** (senha `Demo@12345` para todas):
+| Papel | E-mail |
+|---|---|
+| Admin da clínica | `clinica.centro@demo.icodlife.com` |
+| Médico sócio | `dr.marcos@demo.icodlife.com` |
+| Médica associada | `dra.fernanda@demo.icodlife.com` |
+| Recepção | `recepcao.centro@demo.icodlife.com` |
+
+### ⚠️ Não testado contra banco real
+
+Nada disso rodou contra um Postgres de verdade ainda — o ambiente de execução usado nesta sessão não tem acesso à rede/Docker da máquina do usuário. **Antes de seguir para o front-end, rodar na máquina local**:
+```powershell
+cd apps/api
+npx prisma migrate dev --name sprint21_clinicas_hospitais
+pnpm install          # se necessário
+npx prisma generate
+node prisma/seed-clinic-demo.js
+pnpm dev              # reiniciar a API para carregar o ClinicModule
+```
+Depois, validar manualmente com um cliente HTTP (Insomnia/curl): login como `clinica.centro@demo.icodlife.com` → `GET /clinic/me` → `GET /clinic/doctors` → `GET /clinic/patients` → `GET /clinic/financeiro/dre`.
+
+### ⏳ Pendente (próxima sessão)
+
+- **Sprint 21.3 a 21.7 — `apps/clinica` (frontend Next.js)**: ainda não iniciado. É o maior pedaço de trabalho que falta — esqueleto completo (login, layout, dashboard) + todas as telas (`medicos/`, `agenda/`, `pacientes/`, `empresas/`, `aso/`, `procedimentos/`, `financeiro/`, `staff/`, `salas/`), copiando a estrutura de `apps/doutor` e trocando a fonte de dados para `/clinic/*`.
+- Testes e2e do módulo `clinic` (backend).
+- ASO com cabeçalho de clínica (hoje o PDF só tem dados do médico).
+- Decidir se/como fazer o backfill opcional de `clinicId` nos 400 pacientes de teste e nos registros antigos de médicos que entrarem numa clínica (é uma ação explícita, não automática — ver Seção 8).
+
+### 📁 Arquivos tocados nesta etapa (para referência rápida)
+```
+apps/api/prisma/schema.prisma                          (editado)
+apps/api/prisma/seed-clinic-demo.js                     (novo)
+apps/api/package.json                                   (editado — script db:seed:clinic-demo)
+apps/api/src/app.module.ts                               (editado — registra ClinicModule)
+apps/api/src/modules/clinic/clinic.module.ts             (novo)
+apps/api/src/modules/clinic/clinic.controller.ts          (novo)
+apps/api/src/modules/clinic/clinic.service.ts             (novo)
+apps/api/src/modules/clinic/dto/*.ts                      (novo, 6 arquivos)
+```
+
