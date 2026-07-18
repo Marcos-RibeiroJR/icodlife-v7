@@ -2,6 +2,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateOphthalmologyExamDto, UpdateConsultHistoryDto } from './dto/create-exam.dto';
+import { OphthalmologyPdfService } from './ophthalmology-pdf.service';
 
 /** Tabela de conversão Snellen → estimativa de grau (dioptrias) */
 const SNELLEN_TO_MYOPIA: Record<string, { min: number; max: number; label: string }> = {
@@ -32,7 +33,7 @@ interface ExamEstimate {
 
 @Injectable()
 export class OphthalmologyService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private pdf: OphthalmologyPdfService) {}
 
   // ── Listar exames do usuário ───────────────────────────────────────────────
   async list(userId: string) {
@@ -62,9 +63,11 @@ export class OphthalmologyService {
 
     const estimate = this.computeEstimate(dto, age);
 
-    return this.prisma.ophthalmologyExam.create({
+    const exam = await this.prisma.ophthalmologyExam.create({
       data: {
         userId,
+        visualAcuityRight: dto.acuityRightEye,
+        visualAcuityLeft:  dto.acuityLeftEye,
         astigmatismAxisRight: dto.astigmatismAxisRight,
         astigmatismAxisLeft:  dto.astigmatismAxisLeft,
         contrastScoreRight: dto.contrastScoreRight,
@@ -82,6 +85,39 @@ export class OphthalmologyService {
         completedAt:      new Date(),
       },
     });
+
+    // Salva o laudo na Biblioteca de Exames (HealthRecord) para aparecer junto aos demais exames.
+    try {
+      await this.prisma.healthRecord.create({
+        data: {
+          userId,
+          category:    'oftalmologia',
+          title:       `Laudo Oftalmológico — ${new Date().toLocaleDateString('pt-BR')}`,
+          recordDate:  exam.completedAt ?? new Date(),
+          fileName:    `laudo-oftalmologico-${exam.id.slice(0, 8)}.pdf`,
+          fileUrl:     `/ophthalmology/exams/${exam.id}/laudo.pdf`,
+          tags:        ['laudo', 'oftalmologia'],
+          description: exam.id,
+          isProcessed: true,
+        },
+      });
+    } catch { /* nao bloqueia o exame se o registro falhar */ }
+
+    return exam;
+  }
+
+  /** Gera o PDF do laudo a partir do exame salvo. */
+  async generateLaudoPdf(userId: string, examId: string) {
+    const exam = await this.prisma.ophthalmologyExam.findFirst({
+      where: { id: examId, userId },
+      include: { user: { select: { fullName: true } } },
+    });
+    if (!exam) throw new NotFoundException('Exame nao encontrado');
+    const buffer = await this.pdf.generate({
+      exam,
+      patientName: (exam as any).user?.fullName ?? 'Paciente',
+    });
+    return { buffer, exam };
   }
 
   // ── Histórico de consultas reais ───────────────────────────────────────────

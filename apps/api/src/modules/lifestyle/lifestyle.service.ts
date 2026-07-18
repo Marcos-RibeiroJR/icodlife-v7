@@ -1,9 +1,10 @@
 // apps/api/src/modules/lifestyle/lifestyle.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
 @Injectable()
 export class LifestyleService {
+  private readonly logger = new Logger(LifestyleService.name);
   constructor(private prisma: PrismaService) {}
 
   private calcBmi(height: number, weight: number): { bmi: number; bmiCategory: string } {
@@ -27,6 +28,7 @@ export class LifestyleService {
     const bool = (v: any) => typeof v === 'boolean' ? v : v === 'true' ? true : v === 'false' ? false : undefined;
     const arr = (v: any) => Array.isArray(v) ? v : undefined;
     const str = (v: any) => (typeof v === 'string' && v.trim() !== '') ? v.trim() : undefined;
+    const date = (v: any) => { if (!v) return undefined; const d = new Date(v); return isNaN(d.getTime()) ? undefined : d; };
 
     const heightCm = num(dto.heightCm);
     const weightKg = num(dto.weightKg);
@@ -44,7 +46,7 @@ export class LifestyleService {
       systolicBp: int(dto.systolicBp), diastolicBp: int(dto.diastolicBp),
       // Tabagismo
       smokingStatus: str(dto.smokingStatus), cigarettesPerDay: int(dto.cigarettesPerDay),
-      smokingYears: int(dto.smokingYears), quitDate: dto.quitDate ? new Date(dto.quitDate) : undefined,
+      smokingYears: int(dto.smokingYears), quitDate: date(dto.quitDate),
       // Álcool
       alcoholStatus: str(dto.alcoholStatus), drinksPerWeek: int(dto.drinksPerWeek), alcoholTypes: arr(dto.alcoholTypes),
       // Atividade física
@@ -67,20 +69,26 @@ export class LifestyleService {
     // Remove campos indefinidos (não sobrescreve o que não veio no formulário).
     Object.keys(data).forEach((k) => data[k] === undefined && delete data[k]);
 
-    const profile = await this.prisma.lifestyleProfile.upsert({
-      where: { userId },
-      create: { userId, ...data },
-      update: data,
-    });
-
-    // Snapshot histórico (série temporal de peso/IMC) — só quando há biometria.
-    if (heightCm !== undefined || weightKg !== undefined || bmi !== undefined) {
-      await this.prisma.lifestyleSnapshot.create({
-        data: { userId, heightCm, weightKg, bmi },
+    try {
+      const profile = await this.prisma.lifestyleProfile.upsert({
+        where: { userId },
+        create: { userId, alcoholTypes: [], exerciseTypes: [], mentalHealthDiagnoses: [], ...data },
+        update: data,
       });
-    }
 
-    return profile;
+      // Snapshot histórico (série temporal de peso/IMC) — só quando há biometria.
+      if (heightCm !== undefined || weightKg !== undefined || bmi !== undefined) {
+        await this.prisma.lifestyleSnapshot.create({
+          data: { userId, heightCm, weightKg, bmi },
+        });
+      }
+
+      return profile;
+    } catch (e: any) {
+      // Superfície do erro real (ex.: coluna ausente = build/migration desatualizada).
+      this.logger.error(`Falha ao salvar Módulo Vida (user ${userId}): ${e?.message ?? e}`, e?.stack);
+      throw new BadRequestException(`Não foi possível salvar os dados de estilo de vida: ${e?.message ?? 'erro desconhecido'}`);
+    }
   }
 
   async get(userId: string) {

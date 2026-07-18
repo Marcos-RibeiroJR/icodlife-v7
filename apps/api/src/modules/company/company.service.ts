@@ -80,54 +80,113 @@ export class CompanyService {
     return { deleted: true };
   }
 
-  /** Enriquecimento por CNPJ via BrasilAPI (gratuita, sem chave). Não persiste — só retorna. */
+  /** Enriquecimento por CNPJ. Tenta BrasilAPI e cai para ReceitaWS. Nao persiste — so retorna. */
   async lookupCnpj(cnpj: string) {
     const digits = onlyDigits(cnpj);
-    if (digits.length !== 14) throw new BadRequestException('CNPJ inválido (14 dígitos).');
+    if (digits.length !== 14) throw new BadRequestException('CNPJ invalido (14 digitos).');
+
+    const errors: string[] = [];
+
+    // 1) BrasilAPI
     try {
-      const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digits}`, {
-        headers: { Accept: 'application/json' },
-      });
-      if (res.status === 404) throw new NotFoundException('CNPJ não encontrado na base pública.');
-      if (!res.ok) throw new BadRequestException(`Falha na consulta (HTTP ${res.status}).`);
-      const d: any = await res.json();
-
-      const cnaesSec: string = Array.isArray(d.cnaes_secundarios)
-        ? d.cnaes_secundarios.map((c: any) => `${c.codigo} - ${c.descricao}`).join('; ')
-        : '';
-
-      return {
-        source: 'brasilapi',
-        cnpj: digits,
-        razaoSocial:      d.razao_social ?? null,
-        nomeFantasia:     d.nome_fantasia || null,
-        cnaePrincipal:    d.cnae_fiscal ? `${d.cnae_fiscal} - ${d.cnae_fiscal_descricao ?? ''}`.trim() : null,
-        cnaeSecundario:   cnaesSec || null,
-        naturezaJuridica: d.natureza_juridica ?? null,
-        porte:            d.porte ?? d.descricao_porte ?? null,
-        dataFundacao:     d.data_inicio_atividade ?? null,
-        situacao:         (d.descricao_situacao_cadastral ?? '').toLowerCase().includes('ativa') ? 'ativa' : 'inativa',
-        cep:              d.cep ? onlyDigits(String(d.cep)) : null,
-        logradouro:       [d.descricao_tipo_de_logradouro, d.logradouro].filter(Boolean).join(' ') || null,
-        numero:           d.numero ?? null,
-        complemento:      d.complemento || null,
-        bairro:           d.bairro ?? null,
-        cidade:           d.municipio ?? null,
-        estado:           d.uf ?? null,
-        telefonePrincipal: d.ddd_telefone_1 ?? null,
-        emailRh:          d.email ?? null,
-        metadata: {
-          capitalSocial: d.capital_social ?? null,
-          qsa: d.qsa ?? null,
-          situacaoCadastral: d.descricao_situacao_cadastral ?? null,
-          consultaEm: new Date().toISOString(),
-        },
-      };
-    } catch (err: any) {
-      if (err instanceof NotFoundException || err instanceof BadRequestException) throw err;
-      this.logger.error(`Erro ao consultar CNPJ ${digits}: ${err?.message}`);
-      throw new BadRequestException('Não foi possível consultar o CNPJ agora. Preencha manualmente.');
+      const d = await this.getJson(`https://brasilapi.com.br/api/cnpj/v1/${digits}`);
+      if (d) return this.mapBrasilApi(digits, d);
+    } catch (e: any) {
+      errors.push(`BrasilAPI: ${e?.message ?? e}`);
     }
+
+    // 2) ReceitaWS (fallback)
+    try {
+      const d = await this.getJson(`https://receitaws.com.br/v1/cnpj/${digits}`);
+      if (d && d.status !== 'ERROR') return this.mapReceitaWs(digits, d);
+      if (d?.status === 'ERROR') errors.push(`ReceitaWS: ${d.message ?? 'nao encontrado'}`);
+    } catch (e: any) {
+      errors.push(`ReceitaWS: ${e?.message ?? e}`);
+    }
+
+    this.logger.error(`Falha ao consultar CNPJ ${digits}: ${errors.join(' | ') || 'sem resposta'}`);
+    throw new BadRequestException(
+      `Nao foi possivel consultar o CNPJ nas bases publicas agora (${errors.join('; ') || 'sem resposta'}). Verifique a conexao do servidor ou preencha manualmente.`,
+    );
+  }
+
+  private async getJson(url: string): Promise<any> {
+    const res = await fetch(url, {
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'Mozilla/5.0 (compatible; IcodLife/1.0; +https://icodlife.com)',
+      },
+      signal: (AbortSignal as any).timeout ? (AbortSignal as any).timeout(8000) : undefined,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  }
+
+  private mapBrasilApi(digits: string, d: any) {
+    const cnaesSec: string = Array.isArray(d.cnaes_secundarios)
+      ? d.cnaes_secundarios.map((c: any) => `${c.codigo} - ${c.descricao}`).join('; ')
+      : '';
+    return {
+      source: 'brasilapi',
+      cnpj: digits,
+      razaoSocial:       d.razao_social ?? null,
+      nomeFantasia:      d.nome_fantasia || null,
+      cnaePrincipal:     d.cnae_fiscal ? `${d.cnae_fiscal} - ${d.cnae_fiscal_descricao ?? ''}`.trim() : null,
+      cnaeSecundario:    cnaesSec || null,
+      naturezaJuridica:  d.natureza_juridica ?? null,
+      porte:             d.porte ?? d.descricao_porte ?? null,
+      dataFundacao:      d.data_inicio_atividade ?? null,
+      situacao:          (d.descricao_situacao_cadastral ?? '').toLowerCase().includes('ativa') ? 'ativa' : 'inativa',
+      cep:               d.cep ? onlyDigits(String(d.cep)) : null,
+      logradouro:        [d.descricao_tipo_de_logradouro, d.logradouro].filter(Boolean).join(' ') || null,
+      numero:            d.numero ?? null,
+      complemento:       d.complemento || null,
+      bairro:            d.bairro ?? null,
+      cidade:            d.municipio ?? null,
+      estado:            d.uf ?? null,
+      telefonePrincipal: d.ddd_telefone_1 ?? null,
+      emailRh:           d.email ?? null,
+      metadata: {
+        capitalSocial: d.capital_social ?? null,
+        qsa: d.qsa ?? null,
+        situacaoCadastral: d.descricao_situacao_cadastral ?? null,
+        consultaEm: new Date().toISOString(),
+      },
+    };
+  }
+
+  private mapReceitaWs(digits: string, d: any) {
+    const cnaeSec = Array.isArray(d.atividades_secundarias)
+      ? d.atividades_secundarias.map((c: any) => `${c.code} - ${c.text}`).join('; ')
+      : '';
+    const ap = Array.isArray(d.atividade_principal) ? d.atividade_principal[0] : null;
+    return {
+      source: 'receitaws',
+      cnpj: digits,
+      razaoSocial:       d.nome ?? null,
+      nomeFantasia:      d.fantasia || null,
+      cnaePrincipal:     ap ? `${ap.code} - ${ap.text}` : null,
+      cnaeSecundario:    cnaeSec || null,
+      naturezaJuridica:  d.natureza_juridica ?? null,
+      porte:             d.porte ?? null,
+      dataFundacao:      d.abertura ?? null,
+      situacao:          (d.situacao ?? '').toLowerCase().includes('ativa') ? 'ativa' : 'inativa',
+      cep:               d.cep ? onlyDigits(String(d.cep)) : null,
+      logradouro:        d.logradouro ?? null,
+      numero:            d.numero ?? null,
+      complemento:       d.complemento || null,
+      bairro:            d.bairro ?? null,
+      cidade:            d.municipio ?? null,
+      estado:            d.uf ?? null,
+      telefonePrincipal: d.telefone ?? null,
+      emailRh:           d.email ?? null,
+      metadata: {
+        capitalSocial: d.capital_social ?? null,
+        qsa: d.qsa ?? null,
+        situacaoCadastral: d.situacao ?? null,
+        consultaEm: new Date().toISOString(),
+      },
+    };
   }
 
   /** Campos que o cliente pode gravar (evita sobrescrever id/doctorId/auditoria via body). */

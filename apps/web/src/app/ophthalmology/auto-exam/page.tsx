@@ -84,12 +84,25 @@ function EyePatch({ eye }: { eye: Eye }) {
 }
 
 // ─── Módulo 3: Roda de Astigmatismo ──────────────────────────────────────────
+// Formatadores seguros (a API pode devolver Decimals como string)
+function fmtDpt(v: any): string {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '\u2014';
+  return `${n > 0 ? '+' : ''}${n.toFixed(2)}`;
+}
+function fmtNum(v: any): string {
+  const n = Number(v);
+  return Number.isFinite(n) ? n.toFixed(2) : '0.00';
+}
+
 function AstigmatismWheel() {
-  const size = 200;
+  const size = 232;
   const cx = size / 2;
   const cy = size / 2;
   const r = 88;
+  const labelR = r + 15;
   const lines = 12;
+  const labeled = [0, 45, 90, 135];
 
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="mx-auto">
@@ -106,6 +119,17 @@ function AstigmatismWheel() {
             stroke="#1e293b"
             strokeWidth="2.5"
           />
+        );
+      })}
+      {labeled.map((a) => {
+        const rad = (a * Math.PI) / 180;
+        const dx = Math.cos(rad) * labelR;
+        const dy = Math.sin(rad) * labelR;
+        return (
+          <g key={a}>
+            <text x={cx + dx} y={cy + dy} fontSize="11" fontWeight="700" fill="#3b82f6" textAnchor="middle" dominantBaseline="middle">{a}\u00b0</text>
+            <text x={cx - dx} y={cy - dy} fontSize="11" fontWeight="700" fill="#3b82f6" textAnchor="middle" dominantBaseline="middle">{a}\u00b0</text>
+          </g>
         );
       })}
       <circle cx={cx} cy={cy} r="4" fill="#3b82f6" />
@@ -129,6 +153,7 @@ export default function AutoExamPage() {
   const [step, setStep] = useState<Step>('intro');
   const [saving, setSaving] = useState(false);
   const [examResult, setExamResult] = useState<any>(null);
+  const [downloadingLaudo, setDownloadingLaudo] = useState(false);
 
   const [exam, setExam] = useState<ExamState>({
     symptoms: [],
@@ -284,6 +309,22 @@ export default function AutoExamPage() {
       setContrastPhase('done');
       finishExam({ ...exam, contrastLeft: score });
     }
+  };
+
+  const downloadLaudo = async () => {
+    if (!examResult?.id) return;
+    setDownloadingLaudo(true);
+    try {
+      const blob = await ophthalmologyApi.getLaudo(examResult.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `laudo-oftalmologico-${String(examResult.id).slice(0, 8)}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Não foi possível gerar o laudo em PDF.');
+    } finally { setDownloadingLaudo(false); }
   };
 
   // ── Finalizar e enviar à API ───────────────────────────────────────────────
@@ -723,6 +764,13 @@ export default function AutoExamPage() {
                   <p className="text-slate-500 text-xs mt-1">Resultado da pré-triagem oftalmológica digital IcodLife</p>
                 </div>
 
+                {examResult?.id && (
+                  <button onClick={downloadLaudo} disabled={downloadingLaudo}
+                    className="w-full flex items-center justify-center gap-2 bg-[#002B5C] hover:bg-[#003a7a] disabled:opacity-50 text-white font-bold py-3 rounded-xl text-sm transition-colors">
+                    {downloadingLaudo ? 'Gerando PDF…' : '📄 Baixar Laudo PDF'}
+                  </button>
+                )}
+
                 {/* Risco geral */}
                 {examResult?.riskLevel && (
                   <div className={`rounded-2xl p-5 border-2 ${riskColor[examResult.riskLevel] ?? riskColor.none}`}>
@@ -747,13 +795,13 @@ export default function AutoExamPage() {
                     <div className="grid grid-cols-2 gap-4">
                       <div className="text-center">
                         <div className="text-xs text-slate-400 mb-1">Olho Direito</div>
-                        <div className="text-2xl font-bold text-blue-700">{examResult.estimatedMyopiaRight > 0 ? '+' : ''}{examResult.estimatedMyopiaRight?.toFixed(2)}</div>
+                        <div className="text-2xl font-bold text-blue-700">{fmtDpt(examResult.estimatedMyopiaRight)}</div>
                         <div className="text-xs text-slate-400">dioptrias</div>
                         <div className="text-xs text-blue-600 mt-1">{exam.acuityRight}</div>
                       </div>
                       <div className="text-center">
                         <div className="text-xs text-slate-400 mb-1">Olho Esquerdo</div>
-                        <div className="text-2xl font-bold text-purple-700">{examResult.estimatedMyopiaLeft > 0 ? '+' : ''}{examResult.estimatedMyopiaLeft?.toFixed(2)}</div>
+                        <div className="text-2xl font-bold text-purple-700">{fmtDpt(examResult.estimatedMyopiaLeft)}</div>
                         <div className="text-xs text-slate-400">dioptrias</div>
                         <div className="text-xs text-purple-600 mt-1">{exam.acuityLeft}</div>
                       </div>
@@ -762,11 +810,11 @@ export default function AutoExamPage() {
                       <div className="mt-3 grid grid-cols-2 gap-4 pt-3 border-t border-slate-100">
                         <div className="text-center">
                           <div className="text-xs text-slate-400">Astigmatismo OD</div>
-                          <div className="font-bold text-slate-700">{examResult.estimatedAstigRight?.toFixed(2) ?? '0.00'}</div>
+                          <div className="font-bold text-slate-700">{fmtNum(examResult.estimatedAstigRight)}</div>
                         </div>
                         <div className="text-center">
                           <div className="text-xs text-slate-400">Astigmatismo OE</div>
-                          <div className="font-bold text-slate-700">{examResult.estimatedAstigLeft?.toFixed(2) ?? '0.00'}</div>
+                          <div className="font-bold text-slate-700">{fmtNum(examResult.estimatedAstigLeft)}</div>
                         </div>
                       </div>
                     )}

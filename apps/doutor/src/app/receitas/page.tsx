@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import DoctorShell from '@/components/ui/DoctorShell';
 import { api } from '@/lib/api';
+import { AutocompleteInput } from '@/components/ui/AutocompleteInput';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const fmt = (s: string) => new Date(s).toLocaleDateString('pt-BR');
@@ -244,8 +245,15 @@ function NewPrescriptionForm({ patients, onSaved }: { patients: any[]; onSaved: 
             <div key={i} className="grid grid-cols-12 gap-2 items-start">
               <div className="col-span-3">
                 {i === 0 && <label className="block text-xs text-slate-400 mb-1">Medicamento *</label>}
-                <input value={it.name} onChange={e => setItem(i, 'name', e.target.value)}
-                  placeholder="Nome do medicamento" className="w-full px-2.5 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                <AutocompleteInput
+                  value={it.name}
+                  onChange={v => setItem(i, 'name', v)}
+                  fetcher={async q => {
+                    const r = await api.get('/catalog/medications', { params: { q } });
+                    return (r.data?.items ?? []).map((m: string) => ({ label: m }));
+                  }}
+                  placeholder="Nome do medicamento"
+                  className="w-full px-2.5 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
               </div>
               <div className="col-span-2">
                 {i === 0 && <label className="block text-xs text-slate-400 mb-1">Dosagem</label>}
@@ -392,8 +400,16 @@ function NewExamOrderForm({ patients, onSaved }: { patients: any[]; onSaved: () 
             <div key={i} className="grid grid-cols-12 gap-2 items-start">
               <div className="col-span-4">
                 {i === 0 && <label className="block text-xs text-slate-400 mb-1">Exame *</label>}
-                <input value={ex.name} onChange={e => setExam(i, 'name', e.target.value)}
-                  placeholder="Hemograma completo" className="w-full px-2.5 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                <AutocompleteInput
+                  value={ex.name}
+                  onChange={v => setExam(i, 'name', v)}
+                  fetcher={async q => {
+                    const r = await api.get('/catalog/exams', { params: { q } });
+                    return (r.data?.items ?? []).map((e: any) => ({ label: e.name, sub: e.group, code: e.code }));
+                  }}
+                  onSelect={opt => { if (opt.code) setExam(i, 'code', opt.code); }}
+                  placeholder="Hemograma completo"
+                  className="w-full px-2.5 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
               </div>
               <div className="col-span-2">
                 {i === 0 && <label className="block text-xs text-slate-400 mb-1">Código TUSS</label>}

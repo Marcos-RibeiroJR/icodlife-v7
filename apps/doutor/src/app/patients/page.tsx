@@ -321,11 +321,12 @@ function DoutoresIcodLife() {
 
   useEffect(() => {
     api.get('/doutor/all-doctors', { params: { limit: 100 } })
-      .then(r => { setDoctors(r.data.data); setTotal(r.data.total); })
+      .then(r => { setDoctors(r.data?.doctors ?? []); setTotal(r.data?.total ?? 0); })
+      .catch(() => setDoctors([]))
       .finally(() => setLoading(false));
   }, []);
 
-  const filtered = doctors.filter(d =>
+  const filtered = (doctors ?? []).filter(d =>
     !search ||
     d.user?.fullName?.toLowerCase().includes(search.toLowerCase()) ||
     d.doctorId?.toLowerCase().includes(search.toLowerCase()) ||

@@ -53,6 +53,8 @@ export default function VidaPage() {
   const [saving, setSaving]   = useState(false);
   const [saved, setSaved]     = useState(false);
   const [tab, setTab]         = useState<Tab>('biometria');
+  const [error, setError]     = useState('');
+  const [revisitDismissed, setRevisitDismissed] = useState(false);
 
   useEffect(() => {
     lifestyleApi.get().then(r => {
@@ -63,11 +65,13 @@ export default function VidaPage() {
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 
   const handleSave = async () => {
-    setSaving(true);
+    setSaving(true); setError('');
     try {
       const r = await lifestyleApi.upsert(form);
       setProfile(r.data); setForm(r.data);
       setSaved(true); setTimeout(() => setSaved(false), 3000);
+    } catch (e: any) {
+      setError(e?.response?.data?.message ?? 'Erro ao salvar. Reinicie a API após atualizar o código e tente novamente.');
     } finally { setSaving(false); }
   };
 
@@ -86,6 +90,10 @@ export default function VidaPage() {
     ? bpClass(Number(form.systolicBp), Number(form.diastolicBp)) : null;
 
   const bloodType = user?.bloodType ? (BT_LABEL[user.bloodType] ?? user.bloodType) : null;
+
+  const lastCollected = profile?.updatedAt ? new Date(profile.updatedAt) : null;
+  const daysSince = lastCollected ? Math.floor((Date.now() - lastCollected.getTime()) / 86400000) : null;
+  const needsRevisit = !!profile && (daysSince === null || daysSince >= 30);
 
   const TABS: { id: Tab; icon: string; label: string }[] = [
     { id: 'biometria',   icon: '⚖️',  label: 'Biometria' },
@@ -122,6 +130,22 @@ export default function VidaPage() {
       </div>
 
       <div className="p-8 max-w-4xl mx-auto space-y-6">
+        {/* Lembrete mensal de revisão */}
+        {needsRevisit && !revisitDismissed && (
+          <div className="rounded-2xl p-4 border border-amber-200 bg-amber-50 flex items-start gap-3">
+            <span className="text-2xl">🔔</span>
+            <div className="flex-1">
+              <div className="font-bold text-amber-800 text-sm">Hora de revisar seus dados de estilo de vida</div>
+              <div className="text-amber-700 text-xs mt-0.5">
+                {lastCollected
+                  ? `Última coleta em ${lastCollected.toLocaleDateString('pt-BR')} (${daysSince} dias atrás). Recomendamos revisar mensalmente — esses dados são critérios centrais da sua avaliação de risco.`
+                  : 'Você ainda não preencheu seus dados. Eles são critérios centrais da sua avaliação de risco.'}
+              </div>
+            </div>
+            <button onClick={() => setRevisitDismissed(true)} className="text-amber-400 hover:text-amber-600 text-lg leading-none">✕</button>
+          </div>
+        )}
+
         {/* Cards resumo */}
         {profile && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -443,14 +467,25 @@ export default function VidaPage() {
             )}
           </div>
 
-          <div className="px-6 pb-5 flex items-center justify-between border-t border-slate-50 pt-4">
-            {saved ? (
-              <span className="text-green-600 text-sm font-semibold">Dados salvos com sucesso!</span>
-            ) : <span />}
-            <button onClick={handleSave} disabled={saving}
-              className="bg-[#B91C1C] hover:bg-[#7B1E1E] text-white font-bold px-8 py-2.5 rounded-xl transition-colors text-sm disabled:opacity-60">
-              {saving ? 'Salvando...' : 'Salvar dados'}
-            </button>
+          <div className="px-6 pb-5 border-t border-slate-50 pt-4">
+            {error && (
+              <div className="mb-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2">
+                ⚠️ {error}
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <div className="text-xs">
+                {saved
+                  ? <span className="text-green-600 font-semibold">Dados salvos com sucesso!</span>
+                  : lastCollected
+                    ? <span className="text-slate-400">Última coleta: {lastCollected.toLocaleDateString('pt-BR')}</span>
+                    : <span />}
+              </div>
+              <button onClick={handleSave} disabled={saving}
+                className="bg-[#B91C1C] hover:bg-[#7B1E1E] text-white font-bold px-8 py-2.5 rounded-xl transition-colors text-sm disabled:opacity-60">
+                {saving ? 'Salvando...' : 'Salvar dados'}
+              </button>
+            </div>
           </div>
         </div>
       </div>

@@ -13,6 +13,7 @@ const CATS = [
   { key: 'cardiologia', label: 'Cardiologia', icon: '❤️' },
   { key: 'neurologia',  label: 'Neurologia',  icon: '🧠' },
   { key: 'urina',       label: 'Urina',       icon: '🧫' },
+  { key: 'oftalmologia', label: 'Oftalmologia', icon: '👁️' },
   { key: 'outros',      label: 'Outros',      icon: '📄' },
 ];
 const TABS = ['Todos', ...CATS.map(c => c.label)];
@@ -24,6 +25,7 @@ const LEGACY: Record<string, string> = {
   cardio: 'cardiologia', cardiologia: 'cardiologia',
   neuro: 'neurologia', neurologia: 'neurologia',
   urina: 'urina', urine: 'urina',
+  oftalmologia: 'oftalmologia', ophthalmology: 'oftalmologia', oftalmo: 'oftalmologia',
   general: 'outros', geral: 'outros', exam: 'outros', outros: 'outros', other: 'outros',
 };
 const normCat = (raw?: string) => LEGACY[(raw || '').toLowerCase().trim()] ?? 'outros';
@@ -50,6 +52,20 @@ export default function RecordsPage() {
     setLoading(true);
     try { const { data } = await recordsApi.list(); setRecords(data); }
     catch {} finally { setLoading(false); }
+  };
+
+  const downloadRecord = async (r: any) => {
+    try {
+      const blob = await recordsApi.downloadFile(r.fileUrl);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = r.fileName || `${r.title || 'documento'}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Não foi possível baixar este documento.');
+    }
   };
 
   useEffect(() => { load(); }, []);
@@ -284,6 +300,12 @@ export default function RecordsPage() {
                       {r.labName && `${r.labName} · `}{new Date(r.recordDate).toLocaleDateString('pt-BR')}
                     </div>
                   </div>
+                  {r.fileUrl && (
+                    <button onClick={() => downloadRecord(r)}
+                      className="text-sm text-blue-500 hover:text-blue-700 font-semibold px-3 py-1.5 rounded-lg border border-blue-100 hover:bg-blue-50 transition-colors">
+                      Baixar
+                    </button>
+                  )}
                   <button className="text-sm text-red-400 hover:text-red-600 font-semibold px-3 py-1.5 rounded-lg border border-red-100 hover:bg-red-50 transition-colors"
                     onClick={async () => { if (!confirm('Deletar este exame?')) return; await recordsApi.delete(r.id); load(); }}>✕</button>
                 </div>

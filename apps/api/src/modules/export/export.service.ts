@@ -126,6 +126,10 @@ export class ExportService {
       }),
     ]);
 
+    const ophthalmologyExams = await this.prisma.ophthalmologyExam.findMany({
+      where: { userId }, orderBy: { createdAt: 'desc' }, take: 3,
+    }).catch(() => [] as any[]);
+
     // ── Assinatura digital (pré-computada antes de criar o doc) ───────────────
     const sig        = createDocumentSignature(userId, user.fullName);
     const apiUrl     = process.env.API_URL ?? 'https://api.icodlife.com';
@@ -284,6 +288,27 @@ export class ExportService {
             doc.moveDown(0.2);
           });
           doc.moveDown(0.5);
+        });
+      }
+
+      // ── OFTALMOLOGIA ─────────────────────────────────────────────────────
+      if (ophthalmologyExams.length > 0) {
+        this.section(doc, W, '\uD83D\uDC41\uFE0F Oftalmologia (auto-exame)');
+        const RISK_PT: Record<string, string> = { none: 'Sem alteracao', low: 'Baixo', moderate: 'Moderado', high: 'Alto' };
+        const dptO = (v: any) => { const n = Number(v); return Number.isFinite(n) ? `${n > 0 ? '+' : ''}${n.toFixed(2)}D` : '\u2014'; };
+        ophthalmologyExams.forEach((o: any) => {
+          this.checkNewPage(doc, 50);
+          doc.fontSize(10).font('Helvetica-Bold').fillColor(COLOR.primary)
+            .text(`${fmt(o.completedAt ?? o.createdAt)} \u2014 Risco: ${RISK_PT[String(o.riskLevel)] ?? o.riskLevel}`, 50, doc.y);
+          doc.moveDown(0.3);
+          doc.fontSize(9).font('Helvetica').fillColor(COLOR.text)
+            .text(`AV: OD ${o.visualAcuityRight ?? '\u2014'} / OE ${o.visualAcuityLeft ?? '\u2014'}   |   Esferico: OD ${dptO(o.estimatedMyopiaRight)} / OE ${dptO(o.estimatedMyopiaLeft)}   |   Astig.: OD ${dptO(o.estimatedAstigRight)} / OE ${dptO(o.estimatedAstigLeft)}`, 60, doc.y, { width: W - 20 });
+          doc.moveDown(0.3);
+          if (o.reportSummary) {
+            doc.fontSize(9).font('Helvetica-Oblique').fillColor(COLOR.gray).text(o.reportSummary, 60, doc.y, { width: W - 20 });
+            doc.moveDown(0.3);
+          }
+          doc.moveDown(0.3);
         });
       }
 

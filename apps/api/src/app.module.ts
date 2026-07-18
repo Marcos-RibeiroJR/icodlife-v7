@@ -14,6 +14,7 @@ import { MedicationsModule } from './modules/medications/medications.module';
 import { AppointmentsModule } from './modules/appointments/appointments.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { OphthalmologyModule } from './modules/ophthalmology/ophthalmology.module';
+import { CatalogModule } from './modules/catalog/catalog.module';
 import { BloodPressureModule } from './modules/blood-pressure/blood-pressure.module';
 import { OccupationalHealthModule } from './modules/occupational-health/occupational-health.module';
 import { MentalHealthModule } from './modules/mental-health/mental-health.module';
@@ -59,6 +60,7 @@ import { AuditModule } from './common/audit/audit.module';
     AppointmentsModule,
     NotificationsModule,
     OphthalmologyModule,
+    CatalogModule,
     BloodPressureModule,
     OccupationalHealthModule,
     MentalHealthModule,

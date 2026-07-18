@@ -1,5 +1,5 @@
 // apps/api/src/modules/ophthalmology/ophthalmology.controller.ts
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Res, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { OphthalmologyService } from './ophthalmology.service';
@@ -20,6 +20,16 @@ export class OphthalmologyController {
   @Get('exams/:id')
   get(@CurrentUser() u: any, @Param('id') id: string) {
     return this.svc.get(u.id, id);
+  }
+
+  /** PDF do laudo oftalmológico */
+  @Get('exams/:id/laudo.pdf')
+  async laudo(@CurrentUser() u: any, @Param('id') id: string, @Res() res: any) {
+    const { buffer } = await this.svc.generateLaudoPdf(u.id, id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="laudo-oftalmologico-${id.slice(0, 8)}.pdf"`);
+    res.setHeader('Content-Length', buffer.length);
+    res.send(buffer);
   }
 
   /** Salva resultado completo do auto-exame de triagem */

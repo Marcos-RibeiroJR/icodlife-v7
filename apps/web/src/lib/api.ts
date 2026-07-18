@@ -42,6 +42,16 @@ api.interceptors.response.use(
   }
 );
 
+// Download autenticado de arquivos binários (PDF etc.). Prefixa a base (que já inclui /api/v1).
+async function downloadAuthedBlob(path: string): Promise<Blob> {
+  const token = useAuthStore.getState().accessToken;
+  const base  = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1').replace(/\/$/, '');
+  const rel   = path.startsWith('/') ? path : `/${path}`;
+  const res   = await fetch(`${base}${rel}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error('Falha ao baixar o documento');
+  return res.blob();
+}
+
 // ── Typed helpers ────────────────────────────────────────────────────────────
 
 export const authApi = {
@@ -74,6 +84,7 @@ export const recordsApi = {
   delete:        (id: string)         => api.delete(`/records/${id}`),
   getSignedUrl:  (id: string)         => api.get(`/records/${id}/download`),
   update:        (id: string, d: any) => api.patch(`/records/${id}`, d),
+  downloadFile:  (fileUrl: string)    => downloadAuthedBlob(fileUrl),
 };
 
 export const familyApi = {
@@ -130,6 +141,7 @@ export const ophthalmologyApi = {
   createExam:    (data: any)          => api.post('/ophthalmology/exams', data),
   getHistory:    ()                   => api.get('/ophthalmology/history'),
   createHistory: (data: any)          => api.post('/ophthalmology/history', data),
+  getLaudo:      (examId: string)     => downloadAuthedBlob(`/ophthalmology/exams/${examId}/laudo.pdf`),
 };
 
 export const occupationalHealthApi = {
