@@ -9,6 +9,7 @@
     "db:migrate": "npx prisma migrate deploy",
     "db:seed": "npx ts-node --transpile-only prisma/seed.ts",
     "db:seed:users": "npx ts-node --transpile-only prisma/seed-users.ts",
+    "db:seed:bigdata": "node prisma/seed-bigdata.js",
     "db:reset": "npx prisma migrate reset --force && npx ts-node --transpile-only prisma/seed.ts",
     "db:studio": "npx prisma studio",
     "test": "jest",
