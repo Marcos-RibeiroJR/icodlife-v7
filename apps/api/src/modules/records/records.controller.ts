@@ -1,5 +1,5 @@
 // apps/api/src/modules/records/records.controller.ts
-import { Controller, Get, Post, Delete, Body, Param, UseGuards, UseInterceptors, UploadedFile, Query, Logger, InternalServerErrorException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, UseInterceptors, UploadedFile, Query, Logger, InternalServerErrorException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { RecordsService } from './records.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -38,6 +38,13 @@ export class RecordsController {
         }
         return await this.svc.processOcr(u.id, file.buffer, file.originalname);
       }
+      if (file.mimetype?.startsWith('image/')) {
+        if (!file.buffer) {
+          this.logger.error('file.buffer é undefined — storage não está em memória');
+          throw new InternalServerErrorException('Erro interno: buffer do arquivo não disponível.');
+        }
+        return await this.svc.processImageOcr(u.id, file.buffer, file.originalname);
+      }
       return await this.svc.create(u.id, b);
     } catch (err: any) {
       this.logger.error('Erro no upload/OCR: ' + err.message, err.stack);
@@ -51,6 +58,9 @@ export class RecordsController {
     // b = { healthRecordId, examDate, labName, items: [{marker, value, unit}] }
     return this.svc.create(u.id, b);
   }
+
+  @Patch(':id')
+  update(@CurrentUser() u: any, @Param('id') id: string, @Body() b: any) { return this.svc.update(u.id, id, b); }
 
   @Delete(':id')
   delete(@CurrentUser() u: any, @Param('id') id: string) { return this.svc.delete(u.id, id); }

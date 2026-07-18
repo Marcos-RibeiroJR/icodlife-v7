@@ -5,8 +5,8 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useSearchParams, useRouter }     from 'next/navigation';
 import { io, Socket } from 'socket.io-client';
 
-const WS_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-const API    = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const WS_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/api\/v1\/?$/, '');
+const API    = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/api\/v1\/?$/, '');
 
 function getToken() { return typeof window !== 'undefined' ? localStorage.getItem('doutor_token') : null; }
 function authH()   { return { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` }; }

@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useSearchParams, useRouter }     from 'next/navigation';
 import { io, Socket } from 'socket.io-client';
 
-const WS_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const WS_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/api\/v1\/?$/, '');
 
 type ChatMsg = { senderName: string; text: string; time: string; fromMe: boolean };
 
@@ -42,7 +42,7 @@ export default function VideoCallPatientPage() {
 
   // Busca info da sala
   useEffect(() => {
-    const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+    const API = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/api\/v1\/?$/, '');
     fetch(`${API}/api/v1/telemedicine/join/${token}`)
       .then(r => r.json())
       .then(d => { setRoomInfo(d); setDoctorName(d.doctor?.name ?? 'Médico'); })

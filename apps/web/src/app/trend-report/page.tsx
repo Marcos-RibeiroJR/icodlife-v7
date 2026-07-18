@@ -18,6 +18,11 @@ const TREND_ICON: Record<string, string> = {
   single:    '•',
 };
 
+const HB_FLAGS: Record<string, string> = {
+  sleep_issue: 'Sono ruim', severe_pain: 'Dor intensa', missed_medication: 'Medicação esquecida',
+  bp_risk_factors: 'Risco de PA', bp_symptom: 'Sintoma de PA', possible_illness: 'Possível doença',
+};
+
 const STATUS_CONFIG: Record<string, { bg: string; text: string; label: string }> = {
   normal:        { bg: 'bg-green-50',  text: 'text-green-700',  label: 'Normal' },
   low:           { bg: 'bg-cyan-50',   text: 'text-cyan-700',   label: 'Abaixo' },
@@ -173,6 +178,44 @@ export default function TrendReportPage() {
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Cruzamento HealthBot */}
+            {report.healthBot && (
+              <div className="card p-5">
+                <h2 className="font-bold text-slate-800 mb-1">HealthBot — Check-ins do período</h2>
+                <p className="text-xs text-slate-400 mb-4">Cruzamento com o motor de risco (chat diário)</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="bg-slate-50 rounded-xl p-3 text-center">
+                    <div className="text-2xl font-bold text-slate-700">{report.healthBot.totalCheckins}</div>
+                    <div className="text-xs text-slate-500 mt-1">Check-ins</div>
+                  </div>
+                  <div className={`rounded-xl p-3 text-center ${report.healthBot.avgRisk >= 50 ? 'bg-red-50' : report.healthBot.avgRisk >= 20 ? 'bg-amber-50' : 'bg-green-50'}`}>
+                    <div className="text-2xl font-bold text-slate-700">{report.healthBot.avgRisk}</div>
+                    <div className="text-xs text-slate-500 mt-1">Risco médio</div>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-3 text-center">
+                    <div className="text-2xl font-bold text-slate-700">{Number(report.healthBot.avgSentiment).toFixed(2)}</div>
+                    <div className="text-xs text-slate-500 mt-1">Sentimento</div>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-3 text-center">
+                    <div className="text-2xl">{TREND_ICON[report.healthBot.currentTrend] ?? '➡️'}</div>
+                    <div className="text-xs text-slate-500 mt-1">Tendência</div>
+                  </div>
+                </div>
+                {report.healthBot.topFlags?.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {report.healthBot.topFlags.map((f: any) => (
+                      <span key={f.flag} className="text-xs font-medium bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full">
+                        {HB_FLAGS[f.flag] ?? f.flag} · {f.count}x
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <a href="/saude-tendencia" className="inline-block mt-3 text-sm text-blue-600 hover:text-blue-800 font-semibold">
+                  Ver dashboard de tendência →
+                </a>
               </div>
             )}
 

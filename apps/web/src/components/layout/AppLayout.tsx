@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore } from '../../store/auth.store';
 import { Sidebar } from './Sidebar';
 import { NotificationBell } from './NotificationBell';
+import { HealthBotWidget } from '../chat/HealthBotWidget';
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { accessToken, user } = useAuthStore();
@@ -26,6 +27,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <main className="min-h-screen pt-14" style={{ marginLeft: '248px' }}>
         {children}
       </main>
+      <HealthBotWidget />
     </div>
   );
 }

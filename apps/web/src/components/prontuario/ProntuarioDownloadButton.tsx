@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { useAuthStore } from '../../store/auth.store';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001').replace(/\/api\/v1\/?$/, '');
 
 export function ProntuarioDownloadButton() {
   const { accessToken } = useAuthStore.getState() as any;

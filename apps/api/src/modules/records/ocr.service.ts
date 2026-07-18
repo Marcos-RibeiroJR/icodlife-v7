@@ -18,6 +18,7 @@ export interface OcrResult {
   labName: string | null;
   patientName: string | null;
   confidence: number;
+  category: string; // sangue | imagem | cardiologia | neurologia | urina | outros
 }
 
 // ── Mapa canônico: chave em MAIÚSCULO SEM ESPAÇOS → nome exibido ─────────────
@@ -130,16 +131,50 @@ export class OcrService {
       text = data.text;
     } catch (e) {
       this.logger.warn('pdf-parse falhou: ' + e);
-      return { success: false, text: '', markers: [], examDate: null, labName: null, patientName: null, confidence: 0 };
+      return this.emptyResult('outros');
     }
+    return this.parseTextResult(text);
+  }
 
+  /**
+   * OCR de imagem (JPG/PNG) via tesseract.js. O modelo 'por' (português) é baixado
+   * do CDN na 1a execucao e fica em cache. Para uso offline, defina as envs
+   * TESSERACT_LANG_PATH / TESSERACT_CORE_PATH / TESSERACT_WORKER_PATH.
+   */
+  async extractFromImage(buffer: Buffer): Promise<OcrResult> {
+    let text = '';
+    try {
+      const { createWorker } = require('tesseract.js');
+      const opts: any = {};
+      if (process.env.TESSERACT_LANG_PATH)   opts.langPath   = process.env.TESSERACT_LANG_PATH;
+      if (process.env.TESSERACT_CORE_PATH)   opts.corePath   = process.env.TESSERACT_CORE_PATH;
+      if (process.env.TESSERACT_WORKER_PATH) opts.workerPath = process.env.TESSERACT_WORKER_PATH;
+      const worker = await createWorker('por', 1, opts);
+      const { data } = await worker.recognize(buffer);
+      text = data?.text ?? '';
+      await worker.terminate();
+    } catch (e) {
+      this.logger.warn('tesseract.js (OCR de imagem) falhou: ' + e);
+      return this.emptyResult('imagem');
+    }
+    const res = this.parseTextResult(text);
+    // Imagem sem marcadores legiveis -> permanece como 'imagem'
+    if (res.markers.length === 0 && res.category === 'outros') res.category = 'imagem';
+    return res;
+  }
+
+  private emptyResult(category: string): OcrResult {
+    return { success: false, text: '', markers: [], examDate: null, labName: null, patientName: null, confidence: 0, category };
+  }
+
+  private parseTextResult(text: string): OcrResult {
     const markers     = this.parseMarkers(text);
     const examDate    = this.extractDate(text);
     const labName     = this.extractLabName(text);
     const patientName = this.extractPatientName(text);
     const confidence  = Math.min(100, markers.length * 10 + (examDate ? 10 : 0) + (labName ? 5 : 0));
-
-    return { success: markers.length > 0, text, markers, examDate, labName, patientName, confidence };
+    const category    = this.classifyExamType(text, markers.length);
+    return { success: markers.length > 0, text, markers, examDate, labName, patientName, confidence, category };
   }
 
   private parseMarkers(text: string): OcrMarker[] {
@@ -313,5 +348,23 @@ export class OcrService {
       return m2[1].replace(/([A-Z])(?=[A-Z]{2})/g, '$1 ').trim();
     }
     return null;
+  }
+
+  /** Classifica o tipo de exame a partir do texto extraído (heurística por palavras-chave). */
+  private classifyExamType(text: string, markersCount: number): string {
+    const t = (text || '').toUpperCase();
+    const has = (re: RegExp) => re.test(t);
+
+    if (has(/RAIO.?X|RADIOGRAFIA|TOMOGRAFIA|RESSON[\u00c2A]NCIA|ULTRASSO|ULTRA-?SSO|ECOGRAFIA|MAMOGRAFIA|DENSITOMETRIA|CINTILOGRAFIA|PET.?CT|ANGIOGRAFIA|DOPPLER/))
+      return 'imagem';
+    if (has(/ELETROCARDIOGRAMA|ECOCARDIOGRAMA|\bECG\b|HOLTER|ERGOM[\u00c9E]TRIC|TESTE ERGOM|MONITORIZA[\u00c7C][\u00c3A]O AMBULATORIAL|\bMAPA\b/))
+      return 'cardiologia';
+    if (has(/ELETROENCEFALOGRAMA|\bEEG\b|ELETRONEUROMIOGRAFIA|\bENMG\b|POTENCIAL EVOCADO/))
+      return 'neurologia';
+    if (has(/UROCULTURA|SUM[\u00c1A]RIO DE URINA|ELEMENTOS ANORMAIS|\bEAS\b|UROAN[\u00c1A]LISE|PARCIAL DE URINA/))
+      return 'urina';
+    if (markersCount > 0 || has(/HEMOGRAMA|HEMOGLOBINA|LEUC[\u00d3O]CITOS|PLAQUETAS|GLICOSE|COLESTEROL|CREATININA|S[\u00c9E]RICO|BIOQU[\u00cdI]MICA|SOROLOGIA/))
+      return 'sangue';
+    return 'outros';
   }
 }

@@ -73,6 +73,7 @@ export const recordsApi = {
   get:           (id: string)         => api.get(`/records/${id}`),
   delete:        (id: string)         => api.delete(`/records/${id}`),
   getSignedUrl:  (id: string)         => api.get(`/records/${id}/download`),
+  update:        (id: string, d: any) => api.patch(`/records/${id}`, d),
 };
 
 export const familyApi = {

@@ -180,13 +180,27 @@ export default function ChatPage() {
 
           {/* Quick replies */}
           {!sessionComplete && !loading && messages.length > 0 && (
-            <div className="flex gap-2 overflow-x-auto px-6 py-2 bg-white border-t border-slate-100 flex-shrink-0">
-              {QUICK_REPLIES.map(r => (
-                <button key={r} onClick={() => send(r)}
-                  className="flex-shrink-0 text-xs font-medium border-2 border-blue-200 text-blue-600 px-3 py-1.5 rounded-full hover:bg-blue-50 transition-colors">
-                  {r}
+            <div className="bg-white border-t border-slate-100 flex-shrink-0">
+              {/* Sim / Não em destaque */}
+              <div className="flex gap-2 px-6 pt-2">
+                <button onClick={() => send('Sim')}
+                  className="flex-1 text-sm font-bold text-green-700 bg-green-50 border-2 border-green-200 py-2 rounded-xl hover:bg-green-100 transition-colors">
+                  ✓ Sim
                 </button>
-              ))}
+                <button onClick={() => send('Não')}
+                  className="flex-1 text-sm font-bold text-red-600 bg-red-50 border-2 border-red-200 py-2 rounded-xl hover:bg-red-100 transition-colors">
+                  ✕ Não
+                </button>
+              </div>
+              {/* Contextuais */}
+              <div className="flex gap-2 overflow-x-auto px-6 py-2">
+                {QUICK_REPLIES.map(r => (
+                  <button key={r} onClick={() => send(r)}
+                    className="flex-shrink-0 text-xs font-medium border-2 border-blue-200 text-blue-600 px-3 py-1.5 rounded-full hover:bg-blue-50 transition-colors">
+                    {r}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 

@@ -29,9 +29,18 @@ export interface TrendReport {
   worsening: number;
   markers: MarkerTrend[];
   lifestyle: LifestyleHighlights | null;
+  healthBot: HealthBotHighlights | null;
   recommendations: string[];
   overallRisk: 'low' | 'moderate' | 'high' | 'critical';
   narrativeSummary: string;
+}
+
+interface HealthBotHighlights {
+  totalCheckins: number;
+  avgRisk: number;
+  avgSentiment: number;
+  currentTrend: string; // improving | worsening | stable
+  topFlags: { flag: string; count: number }[];
 }
 
 interface LifestyleHighlights {
@@ -61,6 +70,26 @@ export class TrendReportService {
 
     // 2. Perfil de estilo de vida
     const lifestyle = await this.prisma.lifestyleProfile.findUnique({ where: { userId } });
+
+    // 2b. Check-ins do HealthBot no período (cruzamento com o motor de risco)
+    const checkins = await this.prisma.healthCheckin.findMany({
+      where: { userId, completed: true, checkinDate: { gte: since } },
+      orderBy: { checkinDate: 'asc' },
+    });
+    let healthBot: HealthBotHighlights | null = null;
+    if (checkins.length) {
+      const totalRisk = checkins.reduce((a, c) => a + c.riskScore, 0);
+      const totalSent = checkins.reduce((a, c) => a + Number(c.sentimentScore ?? 0), 0);
+      const flagTotals: Record<string, number> = {};
+      for (const c of checkins) for (const f of ((c.flags as string[]) ?? [])) flagTotals[f] = (flagTotals[f] ?? 0) + 1;
+      healthBot = {
+        totalCheckins: checkins.length,
+        avgRisk: Math.round(totalRisk / checkins.length),
+        avgSentiment: Number((totalSent / checkins.length).toFixed(2)),
+        currentTrend: checkins[checkins.length - 1].trend ?? 'stable',
+        topFlags: Object.entries(flagTotals).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([flag, count]) => ({ flag, count })),
+      };
+    }
 
     // 3. Agrupa por marcador
     const byMarker = new Map<string, typeof items>();
@@ -132,9 +161,17 @@ export class TrendReportService {
 
     // 8. Recomendações automáticas
     const recommendations = this.buildRecommendations(markerTrends, ls);
+    if (healthBot) {
+      if (healthBot.avgRisk >= 50) recommendations.unshift('Seus check-ins diários no HealthBot indicam risco elevado recorrente \u2014 priorize uma avaliação médica.');
+      const missed = healthBot.topFlags.find(f => f.flag === 'missed_medication');
+      if (missed && missed.count >= 3) recommendations.push('Você relatou esquecer a medicação várias vezes no HealthBot \u2014 configure lembretes em Medicamentos.');
+    }
 
     // 9. Sumário narrativo
-    const narrativeSummary = this.buildNarrative(markerTrends, ls, overallRisk, months);
+    let narrativeSummary = this.buildNarrative(markerTrends, ls, overallRisk, months);
+    if (healthBot) {
+      narrativeSummary += ` HealthBot: ${healthBot.totalCheckins} check-in(s) no período, risco médio ${healthBot.avgRisk}/100, tendência ${healthBot.currentTrend}.`;
+    }
 
     // Ordena: críticos primeiro, depois alterados, depois normais
     markerTrends.sort((a, b) => {
@@ -149,6 +186,7 @@ export class TrendReportService {
       normal, abnormal, critical, improving, worsening,
       markers: markerTrends,
       lifestyle: ls,
+      healthBot,
       recommendations,
       overallRisk,
       narrativeSummary,

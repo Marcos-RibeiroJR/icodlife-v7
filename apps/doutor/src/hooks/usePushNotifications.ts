@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 const VAPID_KEY    = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY ?? '';
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001').replace(/\/api\/v1\/?$/, '');
 
 const FIREBASE_CONFIG = {
   apiKey:            process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
