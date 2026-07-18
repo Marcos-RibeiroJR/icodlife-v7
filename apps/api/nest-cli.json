@@ -6,6 +6,6 @@
     "deleteOutDir": false
   },
   "assets": [
-    { "include": "generated/**/*", "watchAssets": true }
+    { "include": "generated/**/*", "watchAssets": false }
   ]
 }
