@@ -50,10 +50,16 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: TypeScript — API
-        run: pnpm --filter api exec tsc --noEmit
+        run: pnpm --filter ./apps/api exec tsc --noEmit
 
       - name: TypeScript — Web
-        run: pnpm --filter web exec tsc --noEmit
+        run: pnpm --filter ./apps/web exec tsc --noEmit
+
+      - name: TypeScript — Doutor
+        run: pnpm --filter ./apps/doutor exec tsc --noEmit
+
+      - name: TypeScript — Clínica
+        run: pnpm --filter ./apps/clinica exec tsc --noEmit
 
 # ── 2. TEST ───────────────────────────────────────────────────────────────────
   test:
@@ -99,16 +105,16 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Prisma generate
-        run: pnpm --filter api exec prisma generate
+        run: pnpm --filter ./apps/api exec prisma generate
 
       - name: Prisma migrate (test DB)
-        run: pnpm --filter api exec prisma migrate deploy
+        run: pnpm --filter ./apps/api exec prisma migrate deploy
 
       - name: Run API unit tests
-        run: pnpm --filter api test --passWithNoTests
+        run: pnpm --filter ./apps/api test --passWithNoTests
 
       - name: Run API E2E tests
-        run: pnpm --filter api test:e2e
+        run: pnpm --filter ./apps/api test:e2e
         env:
           DATABASE_URL: postgresql://icodlife:ci_test_secret@localhost:5432/icodlife_test
           JWT_SECRET: ci_jwt_secret_32_chars_minimum!!
@@ -117,7 +123,7 @@ jobs:
           NODE_ENV: test
 
       - name: Run Web tests
-        run: pnpm --filter web test --passWithNoTests
+        run: pnpm --filter ./apps/web test --passWithNoTests
 
 # ── 3. BUILD & PUSH DOCKER ────────────────────────────────────────────────────
   build:
@@ -154,29 +160,59 @@ jobs:
             type=sha,prefix=sha-
             type=raw,value=latest
 
+      # NOTA: context é a RAIZ do monorepo (não apps/X) em todos os builds abaixo,
+      # porque o workspace pnpm tem um único pnpm-lock.yaml na raiz — os
+      # Dockerfiles fazem `COPY . .` e depois `WORKDIR /app/apps/X`.
+
       # ── API ──────────────────────────────────────────────────────────────────
       - name: Build & push — API
         uses: docker/build-push-action@v5
         with:
-          context: ./apps/api
+          context: .
           file: ./apps/api/Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/api:latest,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/api:sha-${{ github.sha }}
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
 
-      # ── Web ──────────────────────────────────────────────────────────────────
+      # ── Web (paciente) ─────────────────────────────────────────────────────────
       - name: Build & push — Web
         uses: docker/build-push-action@v5
         with:
-          context: ./apps/web
+          context: .
           file: ./apps/web/Dockerfile
           push: true
           build-args: |
-            NEXT_PUBLIC_API_URL=https://api.seudominio.com.br
+            NEXT_PUBLIC_API_URL=https://api.seudominio.com.br/api/v1
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/web:latest,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/web:sha-${{ github.sha }}
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
+
+      # ── Doutor (médico) ─────────────────────────────────────────────────────────
+      - name: Build & push — Doutor
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./apps/doutor/Dockerfile
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=https://api.seudominio.com.br/api/v1
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/doutor:latest,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/doutor:sha-${{ github.sha }}
+          cache-from: type=gha,scope=doutor
+          cache-to: type=gha,mode=max,scope=doutor
+
+      # ── Clínica (clínica/hospital) ──────────────────────────────────────────────
+      - name: Build & push — Clínica
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./apps/clinica/Dockerfile
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=https://api.seudominio.com.br/api/v1
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/clinica:latest,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/clinica:sha-${{ github.sha }}
+          cache-from: type=gha,scope=clinica
+          cache-to: type=gha,mode=max,scope=clinica
 
 # ── 4. DEPLOY → VPS ──────────────────────────────────────────────────────────
   deploy:
@@ -206,10 +242,10 @@ jobs:
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
             # Pull das novas imagens
-            docker compose -f docker-compose.prod.yml --env-file .env.production pull api web
+            docker compose -f docker-compose.prod.yml --env-file .env.production pull api web doutor clinica
 
             # Sobe sem downtime (recreate apenas os containers atualizados)
-            docker compose -f docker-compose.prod.yml --env-file .env.production up -d --no-deps api web
+            docker compose -f docker-compose.prod.yml --env-file .env.production up -d --no-deps api web doutor clinica
 
             # Limpa imagens antigas
             docker image prune -f

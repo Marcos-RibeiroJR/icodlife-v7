@@ -72,16 +72,46 @@ services:
       retries: 3
     networks: [icodlife]
 
-  # ── Web Next.js ─────────────────────────────────────────────────────────────
+  # ── Web Next.js (paciente — apps/web) ───────────────────────────────────────
   web:
     image: ghcr.io/${GITHUB_REPOSITORY:-icodlife/icodlife}/web:${IMAGE_TAG:-latest}
     container_name: icodlife_web
     restart: unless-stopped
     environment:
       NODE_ENV: production
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001/api/v1}
     ports:
       - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [icodlife]
+
+  # ── Doutor Next.js (médico — apps/doutor) ───────────────────────────────────
+  doutor:
+    image: ghcr.io/${GITHUB_REPOSITORY:-icodlife/icodlife}/doutor:${IMAGE_TAG:-latest}
+    container_name: icodlife_doutor
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001/api/v1}
+    ports:
+      - "3002:3002"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [icodlife]
+
+  # ── Clínica Next.js (clínica/hospital — apps/clinica) ───────────────────────
+  clinica:
+    image: ghcr.io/${GITHUB_REPOSITORY:-icodlife/icodlife}/clinica:${IMAGE_TAG:-latest}
+    container_name: icodlife_clinica
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001/api/v1}
+    ports:
+      - "3003:3003"
     depends_on:
       api:
         condition: service_healthy
@@ -100,6 +130,8 @@ services:
       - ./infra/nginx/certs:/etc/nginx/certs:ro
     depends_on:
       - web
+      - doutor
+      - clinica
       - api
     networks: [icodlife]
 
