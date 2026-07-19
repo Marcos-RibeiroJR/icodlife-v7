@@ -72,16 +72,74 @@ export class ClinicPanelController {
   listAgenda(
     @CurrentUser() user: any,
     @Query('date') date?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
     @Query('doctorId') doctorId?: string,
     @Query('roomId') roomId?: string,
   ) {
-    return this.clinicService.listAgenda(user.id, { date, doctorId, roomId });
+    return this.clinicService.listAgenda(user.id, { date, from, to, doctorId, roomId });
+  }
+
+  @Get('agenda/working-hours')
+  getDoctorWorkingHours(@CurrentUser() user: any, @Query('doctorId') doctorId: string) {
+    return this.clinicService.getDoctorWorkingHours(user.id, doctorId);
+  }
+
+  @Get('agenda/slots')
+  getDoctorSlots(@CurrentUser() user: any, @Query('doctorId') doctorId: string, @Query('date') date: string) {
+    return this.clinicService.getDoctorSlots(user.id, doctorId, date);
+  }
+
+  @Get('agenda/day-summary')
+  getDoctorDaySummary(@CurrentUser() user: any, @Query('doctorId') doctorId: string, @Query('date') date: string) {
+    return this.clinicService.getDoctorDaySummary(user.id, doctorId, date || new Date().toISOString().slice(0, 10));
+  }
+
+  @Post('agenda/appointments')
+  createAppointment(@CurrentUser() user: any, @Body() dto: any) {
+    return this.clinicService.createAppointment(user.id, dto);
+  }
+
+  @Patch('agenda/appointments/:id')
+  updateAppointment(@CurrentUser() user: any, @Param('id') id: string, @Body() dto: any) {
+    return this.clinicService.updateAppointment(user.id, id, dto);
+  }
+
+  @Delete('agenda/appointments/:id')
+  cancelAppointment(@CurrentUser() user: any, @Param('id') id: string) {
+    return this.clinicService.cancelAppointment(user.id, id);
   }
 
   // ── empresas ─────────────────────────────────────────────────────────────
   @Get('companies')
   listCompanies(@CurrentUser() user: any) {
     return this.clinicService.listCompanies(user.id);
+  }
+
+  /** Enriquecimento por CNPJ (BrasilAPI/ReceitaWS) — antes de "companies/:id" p/ não colidir. */
+  @Get('companies/lookup/:cnpj')
+  lookupCompanyCnpj(@Param('cnpj') cnpj: string) {
+    return this.clinicService.lookupCnpj(cnpj);
+  }
+
+  @Post('companies')
+  createCompany(@CurrentUser() user: any, @Body() dto: any) {
+    return this.clinicService.createCompany(user.id, dto);
+  }
+
+  @Get('companies/:id')
+  getCompany(@CurrentUser() user: any, @Param('id') id: string) {
+    return this.clinicService.getCompany(user.id, id);
+  }
+
+  @Patch('companies/:id')
+  updateCompany(@CurrentUser() user: any, @Param('id') id: string, @Body() dto: any) {
+    return this.clinicService.updateCompany(user.id, id, dto);
+  }
+
+  @Delete('companies/:id')
+  removeCompany(@CurrentUser() user: any, @Param('id') id: string) {
+    return this.clinicService.removeCompany(user.id, id);
   }
 
   // ── ASOs ─────────────────────────────────────────────────────────────────
@@ -99,6 +157,33 @@ export class ClinicPanelController {
   @Get('rooms')
   listRooms(@CurrentUser() user: any) {
     return this.clinicService.listRooms(user.id);
+  }
+
+  @Patch('rooms/:id')
+  updateRoom(@CurrentUser() user: any, @Param('id') id: string, @Body() dto: any) {
+    return this.clinicService.updateRoom(user.id, id, dto);
+  }
+
+  /** Agenda da sala — mesma listagem de /clinic/agenda, filtrada por roomId. */
+  @Get('rooms/:id/agenda')
+  roomAgenda(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Query('date') date?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.clinicService.listAgenda(user.id, { date, from, to, roomId: id });
+  }
+
+  @Post('rooms/:id/doctors')
+  assignRoomDoctor(@CurrentUser() user: any, @Param('id') id: string, @Body() dto: { doctorId: string }) {
+    return this.clinicService.assignRoomToDoctor(user.id, id, dto.doctorId);
+  }
+
+  @Delete('rooms/:id/doctors/:doctorId')
+  unassignRoomDoctor(@CurrentUser() user: any, @Param('id') id: string, @Param('doctorId') doctorId: string) {
+    return this.clinicService.unassignRoomFromDoctor(user.id, id, doctorId);
   }
 
   // ── procedimentos ────────────────────────────────────────────────────────
@@ -137,5 +222,21 @@ export class ClinicPanelController {
   @Get('financeiro/por-medico')
   financeiroPorMedico(@CurrentUser() user: any, @Query('from') from?: string, @Query('to') to?: string) {
     return this.clinicService.financeiroPorMedico(user.id, from, to);
+  }
+
+  // ── conta corrente por médico (extrato + saldo, inclui custo de salas) ────
+  @Get('financeiro/conta-corrente/:doctorId')
+  contaCorrente(
+    @CurrentUser() user: any,
+    @Param('doctorId') doctorId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.clinicService.getContaCorrente(user.id, doctorId, from, to);
+  }
+
+  @Post('financeiro/conta-corrente/:doctorId/entries')
+  createContaCorrenteEntry(@CurrentUser() user: any, @Param('doctorId') doctorId: string, @Body() dto: any) {
+    return this.clinicService.createDoctorCashEntry(user.id, doctorId, dto);
   }
 }

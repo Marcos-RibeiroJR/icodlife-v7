@@ -1,5 +1,5 @@
 // apps/api/src/modules/clinic/clinic.service.ts
-import { Injectable, ConflictException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateClinicDto } from './dto/create-clinic.dto';
 import { UpdateClinicDto } from './dto/update-clinic.dto';
@@ -7,10 +7,16 @@ import { LinkDoctorDto } from './dto/link-doctor.dto';
 import { AddClinicStaffDto } from './dto/clinic-staff.dto';
 import { ClinicProcedureDto } from './dto/clinic-procedure.dto';
 import { ClinicRoomDto } from './dto/clinic-room.dto';
+import { CompanyService } from '../company/company.service';
+
+const onlyDigits = (s?: string) => (s ?? '').replace(/\D/g, '');
 
 @Injectable()
 export class ClinicService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private companyService: CompanyService,
+  ) {}
 
   // ── Gera clinicCode sequencial por UF: CL.00001.SP ───────────────────────
   private async generateClinicCode(uf: string): Promise<string> {
@@ -37,6 +43,86 @@ export class ClinicService {
       select: { doctorId: true },
     });
     return links.map((l) => l.doctorId);
+  }
+
+  // ── helper: garante que o médico pertence (ativamente) à clínica logada ───
+  private async assertDoctorInClinic(clinicId: string, doctorId: string) {
+    const link = await this.prisma.clinicDoctor.findUnique({
+      where: { clinicId_doctorId: { clinicId, doctorId } },
+    });
+    if (!link || link.status !== 'active') {
+      throw new ForbiddenException('Médico não pertence a esta clínica');
+    }
+  }
+
+  // ── helpers de horário (mesma lógica do DoctorAgendaService, por doctorId) ─
+  private parseTime(t: string): { h: number; m: number } {
+    const [h, m] = t.split(':').map(Number);
+    return { h, m };
+  }
+
+  private addMinutes(date: Date, mins: number): Date {
+    return new Date(date.getTime() + mins * 60_000);
+  }
+
+  // ── calcula slots disponíveis de um médico num dia, direto por doctorId ───
+  private async computeAvailableSlots(doctorId: string, dateStr: string) {
+    const date = new Date(dateStr + 'T00:00:00');
+    const dow = date.getDay();
+
+    const wh = await this.prisma.doctorWorkingHours.findFirst({
+      where: { doctorId, dayOfWeek: dow, isActive: true },
+    });
+    if (!wh) return { date: dateStr, slots: [], message: 'Médico não atende neste dia.' };
+
+    const blocks = await this.prisma.doctorBlockedSlot.findMany({
+      where: { doctorId, date: { gte: date, lt: new Date(date.getTime() + 86_400_000) } },
+    });
+    const dayBlocked = blocks.some((b) => !b.startTime);
+    if (dayBlocked) return { date: dateStr, slots: [], message: 'Dia bloqueado.' };
+
+    const booked = await this.prisma.doctorAppointment.findMany({
+      where: {
+        doctorId,
+        status: { not: 'canceled' },
+        scheduledAt: { gte: date, lt: new Date(date.getTime() + 86_400_000) },
+      },
+    });
+
+    const { h: sh, m: sm } = this.parseTime(wh.startTime);
+    const { h: eh, m: em } = this.parseTime(wh.endTime);
+    const startMs = sh * 60 + sm;
+    const endMs = eh * 60 + em;
+
+    const slots: { time: string; available: boolean; appointmentId?: string }[] = [];
+    for (let t = startMs; t + wh.slotMinutes <= endMs; t += wh.slotMinutes) {
+      const slotTime = new Date(date);
+      slotTime.setHours(Math.floor(t / 60), t % 60, 0, 0);
+      const slotEnd = this.addMinutes(slotTime, wh.slotMinutes);
+
+      const partialBlock = blocks.find((b) =>
+        b.startTime && b.endTime &&
+        this.parseTime(b.startTime).h * 60 + this.parseTime(b.startTime).m <= t &&
+        this.parseTime(b.endTime).h * 60 + this.parseTime(b.endTime).m > t
+      );
+
+      const appt = booked.find((a) => {
+        const aStart = new Date(a.scheduledAt);
+        const aEnd = this.addMinutes(aStart, a.durationMinutes);
+        return aStart < slotEnd && aEnd > slotTime;
+      });
+
+      const hh = String(Math.floor(t / 60)).padStart(2, '0');
+      const mm = String(t % 60).padStart(2, '0');
+
+      slots.push({
+        time: `${hh}:${mm}`,
+        available: !partialBlock && !appt,
+        appointmentId: appt?.id,
+      });
+    }
+
+    return { date: dateStr, slots };
   }
 
   // ── Ativar perfil de clínica em conta existente ───────────────────────────
@@ -191,33 +277,199 @@ export class ClinicService {
     const byUser = new Map<string, any>();
     for (const l of links) {
       if (!byUser.has(l.user.id)) byUser.set(l.user.id, { ...l.user, doctors: [] });
-      byUser.get(l.user.id).doctors.push({ patientDoctorId: l.id, doctorName: l.doctor?.user?.fullName, specialty: l.specialty });
+      byUser.get(l.user.id).doctors.push({
+        patientDoctorId: l.id,
+        doctorId: l.doctorId,
+        doctorName: l.doctor?.user?.fullName,
+        specialty: l.specialty,
+      });
     }
     return Array.from(byUser.values());
   }
 
-  // ── Agenda consolidada ──────────────────────────────────────────────────
-  async listAgenda(userId: string, opts: { date?: string; doctorId?: string; roomId?: string }) {
+  // ── Agenda consolidada — aceita "date" (1 dia) OU "from"/"to" (intervalo) ─
+  async listAgenda(userId: string, opts: { date?: string; from?: string; to?: string; doctorId?: string; roomId?: string }) {
     const clinic = await this.requireClinicByOwner(userId);
     const doctorIds = await this.activeDoctorIds(clinic.id);
     if (doctorIds.length === 0) return [];
 
     const where: any = { doctorId: { in: doctorIds } };
     if (opts.doctorId) where.doctorId = opts.doctorId;
-    if (opts.date) {
+    if (opts.roomId) where.roomId = opts.roomId;
+
+    if (opts.from && opts.to) {
+      where.scheduledAt = { gte: new Date(opts.from), lte: new Date(opts.to) };
+    } else if (opts.date) {
       const start = new Date(opts.date + 'T00:00:00');
       const end = new Date(opts.date + 'T23:59:59.999');
       where.scheduledAt = { gte: start, lte: end };
     }
-    if (opts.roomId) where.roomId = opts.roomId;
 
     return this.prisma.doctorAppointment.findMany({
       where,
       include: {
-        doctor: { include: { user: { select: { fullName: true } } } },
+        doctor: { include: { user: { select: { fullName: true, icode: true } } } },
         procedure: true,
+        room: true,
       },
       orderBy: { scheduledAt: 'asc' },
+    });
+  }
+
+  // ── Agenda: horários/slots/resumo de um médico específico da clínica ─────
+  async getDoctorWorkingHours(userId: string, doctorId: string) {
+    const clinic = await this.requireClinicByOwner(userId);
+    if (!doctorId) throw new BadRequestException('doctorId é obrigatório');
+    await this.assertDoctorInClinic(clinic.id, doctorId);
+    return this.prisma.doctorWorkingHours.findMany({
+      where: { doctorId },
+      orderBy: { dayOfWeek: 'asc' },
+    });
+  }
+
+  async getDoctorSlots(userId: string, doctorId: string, dateStr: string) {
+    const clinic = await this.requireClinicByOwner(userId);
+    if (!doctorId) throw new BadRequestException('doctorId é obrigatório');
+    await this.assertDoctorInClinic(clinic.id, doctorId);
+    return this.computeAvailableSlots(doctorId, dateStr);
+  }
+
+  async getDoctorDaySummary(userId: string, doctorId: string, dateStr: string) {
+    const clinic = await this.requireClinicByOwner(userId);
+    if (!doctorId) throw new BadRequestException('doctorId é obrigatório');
+    await this.assertDoctorInClinic(clinic.id, doctorId);
+
+    const date = new Date(dateStr + 'T00:00:00');
+    const [appts, slotsResult] = await Promise.all([
+      this.prisma.doctorAppointment.findMany({
+        where: {
+          doctorId,
+          scheduledAt: { gte: date, lt: new Date(date.getTime() + 86_400_000) },
+          status: { not: 'canceled' },
+        },
+        orderBy: { scheduledAt: 'asc' },
+        include: { room: true, procedure: true },
+      }),
+      this.computeAvailableSlots(doctorId, dateStr),
+    ]);
+    const totalSlots = (slotsResult as any).slots?.length ?? 0;
+    const freeSlots = (slotsResult as any).slots?.filter((s: any) => s.available).length ?? 0;
+    return {
+      date: dateStr,
+      appointments: appts,
+      totalSlots,
+      freeSlots,
+      bookedSlots: appts.length,
+      message: (slotsResult as any).message,
+    };
+  }
+
+  // ── Agenda: criar/editar/cancelar consulta em nome de um médico da clínica ─
+  async createAppointment(userId: string, dto: any) {
+    const clinic = await this.requireClinicByOwner(userId);
+    if (!dto.doctorId) throw new BadRequestException('doctorId é obrigatório');
+    if (!dto.patientName) throw new BadRequestException('patientName é obrigatório');
+    if (!dto.scheduledAt) throw new BadRequestException('scheduledAt é obrigatório');
+    await this.assertDoctorInClinic(clinic.id, dto.doctorId);
+
+    return this.prisma.doctorAppointment.create({
+      data: {
+        doctorId: dto.doctorId,
+        clinicId: clinic.id,
+        patientName: dto.patientName,
+        patientPhone: dto.patientPhone || undefined,
+        patientIcode: dto.patientIcode || undefined,
+        patientDoctorId: dto.patientDoctorId || undefined,
+        procedureId: dto.procedureId || undefined,
+        roomId: dto.roomId || undefined,
+        scheduledAt: new Date(dto.scheduledAt),
+        durationMinutes: dto.durationMinutes ?? 30,
+        type: dto.type ?? 'consulta',
+        notes: dto.notes || undefined,
+        color: dto.color ?? '#2563EB',
+        price: dto.price !== undefined && dto.price !== '' ? dto.price : undefined,
+        paymentStatus: dto.paymentStatus || undefined,
+      },
+    });
+  }
+
+  async updateAppointment(userId: string, id: string, dto: any) {
+    const clinic = await this.requireClinicByOwner(userId);
+    const doctorIds = await this.activeDoctorIds(clinic.id);
+    const appt = await this.prisma.doctorAppointment.findFirst({ where: { id, doctorId: { in: doctorIds } } });
+    if (!appt) throw new NotFoundException('Consulta não encontrada');
+
+    if (dto.doctorId && dto.doctorId !== appt.doctorId) {
+      await this.assertDoctorInClinic(clinic.id, dto.doctorId);
+    }
+
+    const updated = await this.prisma.doctorAppointment.update({
+      where: { id },
+      data: {
+        ...(dto.doctorId && { doctorId: dto.doctorId }),
+        ...(dto.status && { status: dto.status }),
+        ...(dto.notes !== undefined && { notes: dto.notes }),
+        ...(dto.price !== undefined && { price: dto.price }),
+        ...(dto.paymentStatus && { paymentStatus: dto.paymentStatus }),
+        ...(dto.patientName && { patientName: dto.patientName }),
+        ...(dto.scheduledAt && { scheduledAt: new Date(dto.scheduledAt) }),
+        ...(dto.durationMinutes && { durationMinutes: dto.durationMinutes }),
+        ...(dto.color && { color: dto.color }),
+        ...(dto.type && { type: dto.type }),
+        ...(dto.roomId !== undefined && { roomId: dto.roomId || null }),
+      },
+    });
+
+    // Consulta concluída numa sala com custo definido → debita automaticamente
+    // a conta corrente do médico responsável (idempotente: 1 débito por consulta).
+    if (dto.status === 'completed' && updated.roomId) {
+      await this.chargeRoomUsage(clinic.id, updated);
+    }
+
+    return updated;
+  }
+
+  /** Débito automático de custo de sala na conta-corrente (DoctorCashEntry) do médico. */
+  private async chargeRoomUsage(clinicId: string, appt: any) {
+    const already = await this.prisma.doctorCashEntry.findFirst({
+      where: { appointmentId: appt.id, category: 'custo_sala' },
+    });
+    if (already) return;
+
+    const room = await this.prisma.clinicRoom.findUnique({ where: { id: appt.roomId } });
+    if (!room || (room.costPerUse == null && room.costPerHour == null)) return;
+
+    const hours = (appt.durationMinutes ?? 30) / 60;
+    const amount = room.costPerUse != null
+      ? Number(room.costPerUse)
+      : Number(room.costPerHour) * hours;
+    if (!amount || amount <= 0) return;
+
+    await this.prisma.doctorCashEntry.create({
+      data: {
+        doctorId: appt.doctorId,
+        clinicId,
+        appointmentId: appt.id,
+        roomId: room.id,
+        type: 'expense',
+        category: 'custo_sala',
+        description: `Uso da sala ${room.name} — ${appt.patientName}`,
+        amount,
+        paymentMethod: 'internal',
+        entryDate: appt.scheduledAt,
+        patientName: appt.patientName,
+      },
+    });
+  }
+
+  async cancelAppointment(userId: string, id: string) {
+    const clinic = await this.requireClinicByOwner(userId);
+    const doctorIds = await this.activeDoctorIds(clinic.id);
+    const appt = await this.prisma.doctorAppointment.findFirst({ where: { id, doctorId: { in: doctorIds } } });
+    if (!appt) throw new NotFoundException('Consulta não encontrada');
+    return this.prisma.doctorAppointment.update({
+      where: { id },
+      data: { status: 'canceled' },
     });
   }
 
@@ -230,6 +482,81 @@ export class ClinicService {
       where: { OR: [{ clinicId: clinic.id }, { doctorId: { in: doctorIds } }] },
       orderBy: { razaoSocial: 'asc' },
     });
+  }
+
+  /** Enriquecimento por CNPJ (BrasilAPI/ReceitaWS) — mesma lógica do painel do médico, não persiste. */
+  lookupCnpj(cnpj: string) {
+    return this.companyService.lookupCnpj(cnpj);
+  }
+
+  async getCompany(userId: string, id: string) {
+    const clinic = await this.requireClinicByOwner(userId);
+    const doctorIds = await this.activeDoctorIds(clinic.id);
+    const company = await this.prisma.company.findFirst({
+      where: { id, OR: [{ clinicId: clinic.id }, { doctorId: { in: doctorIds } }] },
+    });
+    if (!company) throw new NotFoundException('Empresa não encontrada');
+    return company;
+  }
+
+  async createCompany(userId: string, dto: any) {
+    const clinic = await this.requireClinicByOwner(userId);
+    if (!dto.razaoSocial) throw new BadRequestException('Razão social é obrigatória.');
+    if (!dto.doctorId) throw new BadRequestException('Médico responsável é obrigatório.');
+    await this.assertDoctorInClinic(clinic.id, dto.doctorId);
+
+    const cnpj = onlyDigits(dto.cnpj);
+    if (!cnpj || cnpj.length !== 14) throw new BadRequestException('CNPJ inválido (14 dígitos).');
+
+    const dup = await this.prisma.company.findFirst({ where: { clinicId: clinic.id, cnpj } });
+    if (dup) throw new ConflictException('Já existe uma empresa cadastrada com este CNPJ nesta clínica.');
+
+    return this.prisma.company.create({
+      data: {
+        ...this.companyService.mapWritable(dto),
+        cnpj,
+        doctorId: dto.doctorId,
+        clinicId: clinic.id,
+        createdBy: userId,
+      },
+    });
+  }
+
+  async updateCompany(userId: string, id: string, dto: any) {
+    const clinic = await this.requireClinicByOwner(userId);
+    const doctorIds = await this.activeDoctorIds(clinic.id);
+    const existing = await this.prisma.company.findFirst({
+      where: { id, OR: [{ clinicId: clinic.id }, { doctorId: { in: doctorIds } }] },
+    });
+    if (!existing) throw new NotFoundException('Empresa não encontrada');
+
+    if (dto.doctorId && dto.doctorId !== existing.doctorId) {
+      await this.assertDoctorInClinic(clinic.id, dto.doctorId);
+    }
+
+    const data: any = {
+      ...this.companyService.mapWritable(dto),
+      ...(dto.doctorId && { doctorId: dto.doctorId }),
+      updatedBy: userId,
+      version: { increment: 1 },
+    };
+    if (dto.cnpj !== undefined) {
+      const cnpj = onlyDigits(dto.cnpj);
+      if (cnpj.length !== 14) throw new BadRequestException('CNPJ inválido (14 dígitos).');
+      data.cnpj = cnpj;
+    }
+    return this.prisma.company.update({ where: { id }, data });
+  }
+
+  async removeCompany(userId: string, id: string) {
+    const clinic = await this.requireClinicByOwner(userId);
+    const doctorIds = await this.activeDoctorIds(clinic.id);
+    const existing = await this.prisma.company.findFirst({
+      where: { id, OR: [{ clinicId: clinic.id }, { doctorId: { in: doctorIds } }] },
+    });
+    if (!existing) throw new NotFoundException('Empresa não encontrada');
+    await this.prisma.company.delete({ where: { id } });
+    return { deleted: true };
   }
 
   // ── ASOs emitidos por qualquer médico da clínica ───────────────────────
@@ -247,12 +574,66 @@ export class ClinicService {
   // ── Salas ──────────────────────────────────────────────────────────────
   async createRoom(userId: string, dto: ClinicRoomDto) {
     const clinic = await this.requireClinicByOwner(userId);
-    return this.prisma.clinicRoom.create({ data: { clinicId: clinic.id, name: dto.name, floor: dto.floor } });
+    return this.prisma.clinicRoom.create({
+      data: {
+        clinicId: clinic.id,
+        name: dto.name,
+        floor: dto.floor,
+        costPerHour: dto.costPerHour,
+        costPerUse: dto.costPerUse,
+      },
+    });
+  }
+
+  async updateRoom(userId: string, id: string, dto: Partial<ClinicRoomDto> & { isActive?: boolean }) {
+    const clinic = await this.requireClinicByOwner(userId);
+    const room = await this.prisma.clinicRoom.findFirst({ where: { id, clinicId: clinic.id } });
+    if (!room) throw new NotFoundException('Sala não encontrada');
+    return this.prisma.clinicRoom.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.floor !== undefined && { floor: dto.floor }),
+        ...(dto.costPerHour !== undefined && { costPerHour: dto.costPerHour }),
+        ...(dto.costPerUse !== undefined && { costPerUse: dto.costPerUse }),
+        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+      },
+    });
   }
 
   async listRooms(userId: string) {
     const clinic = await this.requireClinicByOwner(userId);
-    return this.prisma.clinicRoom.findMany({ where: { clinicId: clinic.id }, orderBy: { name: 'asc' } });
+    return this.prisma.clinicRoom.findMany({
+      where: { clinicId: clinic.id },
+      include: {
+        assigned: {
+          where: { status: 'active' },
+          include: { doctor: { include: { user: { select: { fullName: true } } } } },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  // ── associar/desassociar sala fixa de um médico ("Sala" como agenda dele) ──
+  async assignRoomToDoctor(userId: string, roomId: string, doctorId: string) {
+    const clinic = await this.requireClinicByOwner(userId);
+    const room = await this.prisma.clinicRoom.findFirst({ where: { id: roomId, clinicId: clinic.id } });
+    if (!room) throw new NotFoundException('Sala não encontrada');
+    const link = await this.prisma.clinicDoctor.findUnique({
+      where: { clinicId_doctorId: { clinicId: clinic.id, doctorId } },
+    });
+    if (!link || link.status !== 'active') throw new NotFoundException('Médico não vinculado a esta clínica');
+    return this.prisma.clinicDoctor.update({ where: { id: link.id }, data: { roomId } });
+  }
+
+  async unassignRoomFromDoctor(userId: string, roomId: string, doctorId: string) {
+    const clinic = await this.requireClinicByOwner(userId);
+    const link = await this.prisma.clinicDoctor.findFirst({
+      where: { clinicId: clinic.id, doctorId, roomId },
+    });
+    if (!link) throw new NotFoundException('Vínculo sala/médico não encontrado');
+    return this.prisma.clinicDoctor.update({ where: { id: link.id }, data: { roomId: null } });
   }
 
   // ── Procedimentos ────────────────────────────────────────────────────────
@@ -364,6 +745,9 @@ export class ClinicService {
       const bruto = entries.filter((e) => e.type === 'income').reduce((s, e) => s + Number(e.amount), 0);
       const commissionPct = link.commissionPct ? Number(link.commissionPct) : 100;
       const repasseMedico = bruto * (commissionPct / 100);
+      const custoSalas = entries
+        .filter((e) => e.type === 'expense' && e.category === 'custo_sala')
+        .reduce((s, e) => s + Number(e.amount), 0);
       result.push({
         doctorId: link.doctorId,
         doctorName: link.doctor.user.fullName,
@@ -371,9 +755,71 @@ export class ClinicService {
         commissionPct,
         faturamentoBruto: bruto,
         repasseMedico,
+        custoSalas,
         margemClinica: bruto - repasseMedico,
+        saldoContaCorrente: repasseMedico - custoSalas,
       });
     }
     return result;
+  }
+
+  // ── Conta corrente do médico na clínica (extrato + saldo) ─────────────────
+  async getContaCorrente(userId: string, doctorId: string, from?: string, to?: string) {
+    const clinic = await this.requireClinicByOwner(userId);
+    await this.assertDoctorInClinic(clinic.id, doctorId);
+
+    const where: any = { doctorId, clinicId: clinic.id };
+    if (from || to) {
+      where.entryDate = {};
+      if (from) where.entryDate.gte = new Date(from);
+      if (to) where.entryDate.lte = new Date(to);
+    }
+
+    const entries = await this.prisma.doctorCashEntry.findMany({
+      where,
+      include: { room: true },
+      orderBy: { entryDate: 'desc' },
+    });
+
+    const totalIncome = entries.filter((e) => e.type === 'income').reduce((s, e) => s + Number(e.amount), 0);
+    const totalExpense = entries.filter((e) => e.type === 'expense').reduce((s, e) => s + Number(e.amount), 0);
+    const custoSalas = entries
+      .filter((e) => e.type === 'expense' && e.category === 'custo_sala')
+      .reduce((s, e) => s + Number(e.amount), 0);
+
+    return {
+      doctorId,
+      entries,
+      totalIncome,
+      totalExpense,
+      custoSalas,
+      saldo: totalIncome - totalExpense,
+    };
+  }
+
+  /** Lançamento manual na conta corrente do médico (ajuste, crédito/débito avulso). */
+  async createDoctorCashEntry(userId: string, doctorId: string, dto: any) {
+    const clinic = await this.requireClinicByOwner(userId);
+    await this.assertDoctorInClinic(clinic.id, doctorId);
+    if (!dto.type || !['income', 'expense'].includes(dto.type)) {
+      throw new BadRequestException('type deve ser "income" ou "expense"');
+    }
+    if (!dto.description) throw new BadRequestException('description é obrigatória');
+    if (dto.amount === undefined || dto.amount === null || Number(dto.amount) <= 0) {
+      throw new BadRequestException('amount deve ser maior que zero');
+    }
+    return this.prisma.doctorCashEntry.create({
+      data: {
+        doctorId,
+        clinicId: clinic.id,
+        type: dto.type,
+        category: dto.category || 'ajuste',
+        description: dto.description,
+        amount: dto.amount,
+        paymentMethod: dto.paymentMethod || 'internal',
+        entryDate: dto.entryDate ? new Date(dto.entryDate) : new Date(),
+        notes: dto.notes || undefined,
+      },
+    });
   }
 }

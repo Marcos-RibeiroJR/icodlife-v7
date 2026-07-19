@@ -1,6 +1,7 @@
 'use client';
 // apps/clinica/src/app/pacientes/page.tsx
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import ClinicShell from '@/components/ui/ClinicShell';
 import { clinicApi } from '@/lib/api';
 
@@ -12,10 +13,26 @@ function calcAge(dob?: string) {
 }
 
 export default function PacientesPage() {
+  const router = useRouter();
   const [patients, setPatients] = useState<any[]>([]);
   const [search, setSearch]     = useState('');
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState('');
+
+  // Abre a Agenda já com o paciente (e o médico, se houver só um) pré-selecionados,
+  // pronto pra gerar a consulta que originará o ASO.
+  const gerarConsulta = (p: any) => {
+    const doctors = p.doctors ?? [];
+    const doctorId = doctors.length === 1 ? doctors[0].doctorId : '';
+    const params = new URLSearchParams({
+      newPatientUserId: p.id,
+      newPatientName:   p.fullName ?? '',
+      newPatientIcode:  p.icode ?? '',
+      newType:          'exame',
+      ...(doctorId ? { newDoctorId: doctorId } : {}),
+    });
+    router.push(`/agenda?${params.toString()}`);
+  };
 
   useEffect(() => {
     clinicApi.listPatients()
@@ -61,6 +78,7 @@ export default function PacientesPage() {
                   <th className="px-4 py-3 font-medium">Idade</th>
                   <th className="px-4 py-3 font-medium">Tipo sanguíneo</th>
                   <th className="px-4 py-3 font-medium">Atendido por</th>
+                  <th className="px-4 py-3 font-medium"></th>
                 </tr>
               </thead>
               <tbody>
@@ -74,6 +92,15 @@ export default function PacientesPage() {
                     <td className="px-4 py-3 text-slate-600">{p.bloodType ?? '—'}</td>
                     <td className="px-4 py-3 text-slate-600">
                       {(p.doctors ?? []).map((d: any) => d.doctorName).filter(Boolean).join(', ') || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => gerarConsulta(p)}
+                        className="text-xs font-medium text-indigo-600 hover:underline whitespace-nowrap"
+                        title="Abrir a Agenda com este paciente pré-selecionado, pronto pra gerar a consulta (ASO)"
+                      >
+                        + Gerar Consulta
+                      </button>
                     </td>
                   </tr>
                 ))}

@@ -454,29 +454,24 @@ A stack atual (NestJS + Postgres + Redis, tudo em Docker local) **não precisa v
 - **Validado com o compilador TypeScript real** (`tsc --noEmit` contra os tipos de Next/React já presentes no monorepo) — **0 erros** em todos os arquivos do app. Achou e corrigiu 1 bug real (JSX mal fechado em `register/page.tsx`, causado por um truncamento de arquivo no ambiente de escrita — corrigido e revalidado).
 - **Não rodou `pnpm dev` de verdade** (sandbox sem os pacotes instalados via rede) — só validação estática de tipos/sintaxe.
 
-### ⚠️ Não testado contra ambiente real
+### ✅ Login validado (19/07) — bug corrigido
 
-Nada disso rodou de ponta a ponta (browser + API + Postgres) ainda. **Rodar na máquina local**:
-```powershell
-cd apps/api
-npx prisma migrate dev --name sprint21_clinicas_hospitais   # se ainda não rodou
-node prisma/seed-clinic-demo.js                              # se ainda não rodou
-pnpm dev                                                     # API na porta 3001
+O login do painel Clínica (`localhost:3003/login`, `clinica.centro@demo.icodlife.com` / `Demo@12345`) estava dando **"Internal server error"**. Causa raiz identificada e corrigida nesta sessão:
+- O `schema.prisma` e a migration `20260718211553_sprint21_clinicas_hospitais` já tinham `clinic_admin` no enum `UserRole` corretamente, e `npx prisma migrate status` confirmava schema em dia — mas o **Prisma Client compilado em `dist/src/generated/prisma`** estava desatualizado (o `nest-cli.json` só copia a pasta `generated/**/*` como asset na build "fria", com `watchAssets: false`, e `deleteOutDir: false` nunca limpa o `dist` antigo).
+- Fix aplicado: `npx prisma generate` (regenera `src/generated/prisma`) + cópia manual para `dist/src/generated/prisma` (`Remove-Item -Recurse -Force dist` sozinho não bastou — a cópia de assets do `nest-cli` não rodou a tempo; foi preciso `Copy-Item -Recurse -Force src\generated\prisma dist\src\generated\prisma` manualmente antes do `pnpm dev`).
+- **Login confirmado funcionando** após o fix.
+- ⚠️ **Atenção para próximas mudanças de schema**: sempre que rodar `npx prisma generate` de novo, repetir a cópia manual pra `dist/src/generated/prisma` (ou apagar o `dist` inteiro e copiar) antes de reiniciar a API — o `nest-cli.json` não recopia isso automaticamente em watch mode.
 
-# em outro terminal
-cd apps/clinica
-pnpm install
-pnpm dev                                                     # painel Clínica na porta 3003
-```
-Depois, abrir `http://localhost:3003/login` e entrar com `clinica.centro@demo.icodlife.com` / `Demo@12345`. Conferir dashboard, médicos (deve mostrar Dr. Marcos e Dra. Fernanda), agenda, financeiro (DRE + repasse por médico).
+### ✅ Telas do painel Clínica validadas (19/07)
+
+Validado manualmente pelo usuário no navegador (`localhost:3003`, logado como `clinica.centro@demo.icodlife.com`): dashboard (ClinicID `CL.00001.SP`, 2 médicos vinculados, 1 equipe, 402 pacientes, especialidades: Cardiologia/Clínica Geral/Dermatologia/Estética Médica, agenda do dia vazia), Médicos, Agenda, Pacientes, Empresas, ASO, Procedimentos, Salas, Equipe, Financeiro e Configurações — todas carregando sem erro.
 
 ### ⏳ Pendente (próxima sessão)
 
-- Rodar `apps/clinica` de verdade (`pnpm install` + `pnpm dev`) e validar visualmente todas as telas contra a API local.
 - Testes e2e do módulo `clinic` (backend).
 - ASO com cabeçalho de clínica (hoje o PDF só tem dados do médico).
 - Decidir se/como fazer o backfill opcional de `clinicId` nos 400 pacientes de teste e nos registros antigos de médicos que entrarem numa clínica (é uma ação explícita, não automática — ver Seção 8).
-- Corrigir o bug encontrado no login de `apps/web` (porta 3000): a aba "Doutor" retorna "Internal server error" ao tentar logar com uma conta `role=clinic_admin` — investigar `auth.service.ts` (tem um debug logger ativo, `[LOGIN] ...`, que deve apontar a causa no log da API).
+- Bug separado encontrado nos logs (não bloqueante): `medications.service.ts:18` — `prisma.medication.create()` falha com "Null constraint violation on `scheduled_times`" quando o medicamento é salvo sem frequência definida.
 - Seções 10 e 11 do plano (Big Data / Data Lake / ML) seguem como próxima fase depois do módulo Clínicas estar validado ponta a ponta.
 
 ### 📁 Arquivos tocados nesta etapa (para referência rápida)

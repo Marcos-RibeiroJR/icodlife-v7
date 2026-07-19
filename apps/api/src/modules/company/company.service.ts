@@ -189,8 +189,9 @@ export class CompanyService {
     };
   }
 
-  /** Campos que o cliente pode gravar (evita sobrescrever id/doctorId/auditoria via body). */
-  private mapWritable(dto: any) {
+  /** Campos que o cliente pode gravar (evita sobrescrever id/doctorId/auditoria via body).
+   *  Público para reaproveitamento pelo ClinicService (criação de empresa via painel da clínica). */
+  mapWritable(dto: any) {
     const fields = [
       'razaoSocial', 'nomeFantasia', 'inscricaoEstadual', 'inscricaoMunicipal',
       'cnaePrincipal', 'cnaeSecundario', 'grauRisco', 'naturezaJuridica', 'codigoFpas',

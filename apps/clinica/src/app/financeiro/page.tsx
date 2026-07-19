@@ -6,7 +6,119 @@ import StatCard from '@/components/ui/StatCard';
 import { clinicApi } from '@/lib/api';
 
 function fmtBRL(v: number) {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  return (v ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+const ENTRY_TYPE_LABEL: Record<string, string> = { income: 'Crédito', expense: 'Débito' };
+const CATEGORY_LABEL: Record<string, string> = { custo_sala: 'Custo de sala', ajuste: 'Ajuste manual' };
+
+// ─── Modal: Conta corrente do médico (extrato + lançamento manual) ────────────
+function ContaCorrenteModal({ doctorId, doctorName, onClose }: { doctorId: string; doctorName: string; onClose: () => void }) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [type, setType] = useState('expense');
+  const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = () => {
+    setLoading(true);
+    clinicApi.contaCorrente(doctorId).then(r => setData(r.data)).catch(() => {}).finally(() => setLoading(false));
+  };
+  useEffect(load, [doctorId]);
+
+  const submit = async () => {
+    if (!description.trim() || !amount) return;
+    setSaving(true); setError('');
+    try {
+      await clinicApi.createContaCorrenteEntry(doctorId, { type, description, amount: Number(amount) });
+      setDescription(''); setAmount(''); setShowForm(false);
+      load();
+    } catch (e: any) {
+      setError(e.response?.data?.message ?? 'Erro ao lançar');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-bold text-slate-800">Conta corrente — Dr(a). {doctorName}</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+        </div>
+
+        {loading ? (
+          <div className="text-center py-8 text-slate-400 text-sm">Carregando...</div>
+        ) : (
+          <>
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="bg-slate-50 rounded-lg p-3 text-center">
+                <p className="text-xs text-slate-500">Créditos</p>
+                <p className="text-sm font-bold text-green-700">{fmtBRL(data?.totalIncome)}</p>
+              </div>
+              <div className="bg-slate-50 rounded-lg p-3 text-center">
+                <p className="text-xs text-slate-500">Débitos</p>
+                <p className="text-sm font-bold text-red-700">{fmtBRL(data?.totalExpense)}</p>
+              </div>
+              <div className="bg-slate-50 rounded-lg p-3 text-center">
+                <p className="text-xs text-slate-500">Saldo</p>
+                <p className={`text-sm font-bold ${(data?.saldo ?? 0) >= 0 ? 'text-green-700' : 'text-red-700'}`}>{fmtBRL(data?.saldo)}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Extrato</p>
+              <button onClick={() => setShowForm(v => !v)} className="text-xs text-indigo-600 hover:underline">
+                {showForm ? 'Cancelar' : '+ Lançamento manual'}
+              </button>
+            </div>
+
+            {showForm && (
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-3 space-y-2">
+                <div className="flex gap-2">
+                  <select value={type} onChange={e => setType(e.target.value)}
+                    className="px-2 py-1.5 border border-slate-300 rounded-lg text-xs">
+                    <option value="expense">Débito</option>
+                    <option value="income">Crédito</option>
+                  </select>
+                  <input value={description} onChange={e => setDescription(e.target.value)} placeholder="Descrição"
+                    className="flex-1 px-2 py-1.5 border border-slate-300 rounded-lg text-xs" />
+                  <input value={amount} onChange={e => setAmount(e.target.value)} type="number" min={0} step="0.01" placeholder="R$"
+                    className="w-24 px-2 py-1.5 border border-slate-300 rounded-lg text-xs" />
+                </div>
+                {error && <p className="text-xs text-red-600">{error}</p>}
+                <button onClick={submit} disabled={saving}
+                  className="text-xs text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 px-3 py-1.5 rounded-lg">
+                  {saving ? 'Salvando...' : 'Lançar'}
+                </button>
+              </div>
+            )}
+
+            <div className="divide-y divide-slate-50 border border-slate-100 rounded-lg overflow-hidden">
+              {(data?.entries ?? []).length === 0 ? (
+                <div className="p-4 text-center text-slate-400 text-xs">Nenhum lançamento.</div>
+              ) : data.entries.map((e: any) => (
+                <div key={e.id} className="flex items-center justify-between px-3 py-2 text-xs">
+                  <div>
+                    <p className="text-slate-700">{e.description}</p>
+                    <p className="text-slate-400">
+                      {new Date(e.entryDate).toLocaleDateString('pt-BR')} · {CATEGORY_LABEL[e.category] ?? e.category}
+                      {e.room?.name && ` · ${e.room.name}`}
+                    </p>
+                  </div>
+                  <span className={`font-medium ${e.type === 'income' ? 'text-green-700' : 'text-red-700'}`}>
+                    {e.type === 'income' ? '+' : '-'} {fmtBRL(Number(e.amount))}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function FinanceiroPage() {
@@ -16,6 +128,7 @@ export default function FinanceiroPage() {
   const [porMedico, setPorMedico] = useState<any[]>([]);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState('');
+  const [contaCorrenteFor, setContaCorrenteFor] = useState<{ id: string; name: string } | null>(null);
 
   const load = () => {
     setLoading(true); setError('');
@@ -96,6 +209,9 @@ export default function FinanceiroPage() {
                       <th className="px-4 py-3 font-medium">Faturamento bruto</th>
                       <th className="px-4 py-3 font-medium">Repasse ao médico</th>
                       <th className="px-4 py-3 font-medium">Margem da clínica</th>
+                      <th className="px-4 py-3 font-medium">Custo de salas</th>
+                      <th className="px-4 py-3 font-medium">Conta corrente</th>
+                      <th className="px-4 py-3 font-medium"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -106,6 +222,18 @@ export default function FinanceiroPage() {
                         <td className="px-4 py-3 text-slate-600">{fmtBRL(m.faturamentoBruto)}</td>
                         <td className="px-4 py-3 text-slate-600">{fmtBRL(m.repasseMedico)}</td>
                         <td className="px-4 py-3 text-slate-800 font-medium">{fmtBRL(m.margemClinica)}</td>
+                        <td className="px-4 py-3 text-red-600">{fmtBRL(m.custoSalas)}</td>
+                        <td className={`px-4 py-3 font-medium ${(m.saldoContaCorrente ?? 0) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                          {fmtBRL(m.saldoContaCorrente)}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => setContaCorrenteFor({ id: m.doctorId, name: m.doctorName })}
+                            className="text-xs text-indigo-600 hover:underline whitespace-nowrap"
+                          >
+                            Ver extrato
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -113,6 +241,14 @@ export default function FinanceiroPage() {
               )}
             </div>
           </>
+        )}
+
+        {contaCorrenteFor && (
+          <ContaCorrenteModal
+            doctorId={contaCorrenteFor.id}
+            doctorName={contaCorrenteFor.name}
+            onClose={() => setContaCorrenteFor(null)}
+          />
         )}
       </div>
     </ClinicShell>

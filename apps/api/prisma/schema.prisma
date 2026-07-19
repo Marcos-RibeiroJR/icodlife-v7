@@ -1007,14 +1007,18 @@ model ClinicStaff {
 
 // sala/consultório físico
 model ClinicRoom {
-  id       String         @id @default(uuid())
-  clinicId String         @map("clinic_id")
-  clinic   Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  name     String
-  floor    String?
-  isActive Boolean        @default(true) @map("is_active")
-  assigned ClinicDoctor[]
+  id           String         @id @default(uuid())
+  clinicId     String         @map("clinic_id")
+  clinic       Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  name         String
+  floor        String?
+  isActive     Boolean        @default(true) @map("is_active")
+  // custo de ocupação da sala — usado para debitar automaticamente a conta corrente do médico
+  costPerHour  Decimal?       @map("cost_per_hour")
+  costPerUse   Decimal?       @map("cost_per_use")
+  assigned     ClinicDoctor[]
   appointments DoctorAppointment[]
+  cashEntries  DoctorCashEntry[]
 
   @@map("clinic_rooms")
 }
@@ -1438,6 +1442,8 @@ model DoctorCashEntry {
   clinic         Clinic?           @relation(fields: [clinicId], references: [id])
   appointmentId  String?           @map("appointment_id")
   appointment    DoctorAppointment? @relation(fields: [appointmentId], references: [id])
+  roomId         String?           @map("room_id")
+  room           ClinicRoom?       @relation(fields: [roomId], references: [id])
   type           String
   category       String
   description    String

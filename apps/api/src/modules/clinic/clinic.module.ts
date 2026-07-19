@@ -3,9 +3,10 @@ import { Module } from '@nestjs/common';
 import { ClinicService } from './clinic.service';
 import { BecomeClinicAdminController, ClinicPanelController } from './clinic.controller';
 import { PrismaModule } from '../../common/prisma/prisma.module';
+import { CompanyModule } from '../company/company.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, CompanyModule],
   controllers: [BecomeClinicAdminController, ClinicPanelController],
   providers: [ClinicService],
   exports: [ClinicService],
