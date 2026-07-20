@@ -1,6 +1,7 @@
 // apps/api/src/modules/exam-results/trend-report.service.ts
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { LifestyleService } from '../lifestyle/lifestyle.service';
 
 export type TrendDir = 'improving' | 'worsening' | 'stable' | 'single';
 
@@ -56,7 +57,10 @@ interface LifestyleHighlights {
 
 @Injectable()
 export class TrendReportService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private lifestyleService: LifestyleService,
+  ) {}
 
   async generate(userId: string, months = 6): Promise<TrendReport> {
     const since = new Date();
@@ -148,15 +152,16 @@ export class TrendReportService {
       'low';
 
     // 7. Cruzamento com estilo de vida
+    const healthScoreData = this.lifestyleService.computeHealthScore(lifestyle);
     const ls: LifestyleHighlights | null = lifestyle ? {
-      healthScore:       null,
+      healthScore:       healthScoreData?.healthScore ?? null,
       bmi:               lifestyle.bmi ? Number(lifestyle.bmi) : null,
       bmiCategory:       lifestyle.bmiCategory ?? null,
       smokingStatus:     lifestyle.smokingStatus ?? null,
       exerciseFrequency: lifestyle.exerciseFrequency ?? null,
       stressLevel:       lifestyle.stressLevel ?? null,
-      systolicBp:        null,
-      diastolicBp:       null,
+      systolicBp:        lifestyle.systolicBp ?? null,
+      diastolicBp:       lifestyle.diastolicBp ?? null,
     } : null;
 
     // 8. Recomendações automáticas

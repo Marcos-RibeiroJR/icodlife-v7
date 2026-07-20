@@ -5,22 +5,57 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 export class MedicationsService {
   constructor(private prisma: PrismaService) {}
 
-  list(userId: string) {
-    return this.prisma.medication.findMany({ where: { userId }, orderBy: { createdAt: 'desc' } });
+  /** frequency é coluna String no schema — guardamos como JSON serializado quando vem
+   *  um objeto ({times, days}) e desserializamos na leitura, pra manter compatível com
+   *  registros antigos que só tinham um rótulo simples tipo "daily". */
+  private parseFrequency(raw: string): any {
+    if (typeof raw !== 'string') return raw;
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : raw;
+    } catch {
+      return raw;
+    }
   }
 
-  create(userId: string, d: any) {
+  /** Extrai o array de horários (scheduled_times, NOT NULL sem default) a partir do
+   *  payload recebido — aceita frequency.times, scheduledTimes direto, ou string
+   *  "07:00, 19:00" separada por vírgula. Nunca retorna null/undefined (bug histórico:
+   *  create() nunca preenchia essa coluna e violava a constraint NOT NULL). */
+  private extractScheduledTimes(d: any): string[] {
+    if (Array.isArray(d.frequency?.times)) return d.frequency.times.filter(Boolean);
+    if (Array.isArray(d.scheduledTimes)) return d.scheduledTimes.filter(Boolean);
+    if (typeof d.times === 'string' && d.times.trim()) {
+      return d.times.split(',').map((t: string) => t.trim()).filter(Boolean);
+    }
+    return ['08:00'];
+  }
+
+  private mapOut(m: any) {
+    return m ? { ...m, frequency: this.parseFrequency(m.frequency) } : m;
+  }
+
+  async list(userId: string) {
+    const meds = await this.prisma.medication.findMany({ where: { userId }, orderBy: { createdAt: 'desc' } });
+    return meds.map((m) => this.mapOut(m));
+  }
+
+  async create(userId: string, d: any) {
     // frequency must be a string per schema
     const frequency = typeof d.frequency === 'object'
       ? JSON.stringify(d.frequency)
       : (d.frequency || 'daily');
 
-    return this.prisma.medication.create({
+    const scheduledTimes = this.extractScheduledTimes(d);
+
+    const created = await this.prisma.medication.create({
       data: {
         userId,
         name: d.name,
         dosage: d.dosage,
         frequency,
+        scheduledTimes,
+        timesPerDay: scheduledTimes.length || 1,
         startDate: new Date(d.startDate || new Date()),
         endDate: d.endDate ? new Date(d.endDate) : undefined,
         prescribingDoctor: d.prescribingDoctor,
@@ -28,6 +63,7 @@ export class MedicationsService {
         isActive: true,
       },
     });
+    return this.mapOut(created);
   }
 
   update(userId: string, id: string, d: any) {
@@ -35,6 +71,11 @@ export class MedicationsService {
     if (d.name !== undefined) data.name = d.name;
     if (d.dosage !== undefined) data.dosage = d.dosage;
     if (d.frequency !== undefined) data.frequency = typeof d.frequency === 'object' ? JSON.stringify(d.frequency) : d.frequency;
+    if (d.frequency?.times !== undefined || d.scheduledTimes !== undefined || d.times !== undefined) {
+      const scheduledTimes = this.extractScheduledTimes(d);
+      data.scheduledTimes = scheduledTimes;
+      data.timesPerDay = scheduledTimes.length || 1;
+    }
     if (d.startDate !== undefined) data.startDate = new Date(d.startDate);
     if (d.endDate !== undefined) data.endDate = d.endDate ? new Date(d.endDate) : null;
     if (d.prescribingDoctor !== undefined) data.prescribingDoctor = d.prescribingDoctor;

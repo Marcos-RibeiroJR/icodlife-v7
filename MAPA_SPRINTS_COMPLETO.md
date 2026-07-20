@@ -106,9 +106,9 @@ Confirmado por código (`apps/api/src/modules/*` — 35 módulos existentes hoje
 | Chat `ai-chat/start` disparando 2x | V14 | V14 | ✅ Resolvido |
 | Duplicação `/api/v1` (prontuário/push/telemedicina) | V15 | V15 | ✅ Resolvido |
 | Login Clínica — Internal Server Error | V16 | V16 (Prisma Client desatualizado no `dist`) | ✅ Resolvido |
-| `medications.service.ts:18` — Null constraint em `scheduled_times` | V16 | **Nunca** | 🔴 **Em aberto** |
-| "Erro ao carregar médicos" no painel Clínica | V17 | **Não resolvido** — hipótese de migration pendente descartada nesta sessão | 🔴 **Em aberto**, precisa investigação com API rodando |
-| `LifestyleProfile.healthScore` referenciado mas coluna não existe | V14 | **Não resolvido** | 🟡 Pendente, não bloqueante |
+| `medications.service.ts:18` — Null constraint em `scheduled_times` | V16 | Nesta sessão | ✅ Resolvido — `create()`/`update()` agora sempre preenchem `scheduledTimes`/`timesPerDay`; `frequency` também passou a ser desserializado na leitura (bug irmão: tela de horários sempre caía no default) |
+| "Erro ao carregar médicos" no painel Clínica | V17 | **Não resolvido** | 🔴 **Em aberto** — 3ª rodada de investigação estática (controller/service/schema/CORS/porta/token) não encontrou causa de código; CORS e portas conferidos e OK. Próximo passo precisa ser feito pelo usuário: abrir DevTools → Network na tela Médicos e ver o status/body real da requisição `/clinic/doctors` (o fallback "Erro ao carregar médicos" só aparece quando `err.response` vem vazio/sem `message`, o que aponta pra erro de rede/CORS ou 500 sem body — não pra um 4xx normal) |
+| `LifestyleProfile.healthScore` referenciado mas coluna não existe | V14 | Nesta sessão | ✅ Resolvido — em vez de migrar o schema, o score (e `healthScoreNotes`) passou a ser calculado em tempo real em `LifestyleService.computeHealthScore()` a partir dos campos já existentes (IMC, pressão, tabagismo, álcool, exercício, sono, estresse), usado tanto em `/lifestyle` quanto no `trend-report` |
 | OCR de PDF escaneado (imagem dentro de PDF) | V15 | **Não resolvido** | 🔵 Melhoria futura |
 | Dockerfiles de deploy com contexto de build errado (`pnpm-lock.yaml` não existia no contexto) e `pnpm --filter` com nome errado | Descoberto nesta sessão ao investigar Sprint 23 | ✅ Corrigido nesta sessão | ✅ Resolvido — **mas ainda não testado (sandbox indisponível)** |
 

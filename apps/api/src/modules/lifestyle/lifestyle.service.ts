@@ -83,7 +83,7 @@ export class LifestyleService {
         });
       }
 
-      return profile;
+      return this.withHealthScore(profile);
     } catch (e: any) {
       // Superfície do erro real (ex.: coluna ausente = build/migration desatualizada).
       this.logger.error(`Falha ao salvar Módulo Vida (user ${userId}): ${e?.message ?? e}`, e?.stack);
@@ -92,7 +92,64 @@ export class LifestyleService {
   }
 
   async get(userId: string) {
-    return this.prisma.lifestyleProfile.findUnique({ where: { userId } });
+    const profile = await this.prisma.lifestyleProfile.findUnique({ where: { userId } });
+    return this.withHealthScore(profile);
+  }
+
+  /**
+   * healthScore/healthScoreNotes são referenciados no frontend (dashboard, vida,
+   * trend-report, compartilhamento) mas nunca existiram como coluna no schema —
+   * bug conhecido ("coluna não existe"). Em vez de migrar o schema pra persistir
+   * um valor derivado, calculamos em tempo real a partir dos campos que já existem
+   * (IMC, pressão, tabagismo, álcool, exercício, sono, estresse) e devolvemos junto
+   * do perfil. Público: usado também pelo TrendReportService.
+   */
+  computeHealthScore(p: any): { healthScore: number; healthScoreNotes: string } | null {
+    if (!p) return null;
+
+    const BMI_SCORE: Record<string, number> = {
+      normal: 20, underweight: 14, overweight: 14, obese_1: 8, obese_2: 4, obese_3: 0,
+    };
+    const SMOKING_SCORE: Record<string, number> = { never: 15, former: 10, occasional: 5, daily: 0 };
+    const ALCOHOL_SCORE: Record<string, number> = { none: 10, occasional: 8, weekly: 5, daily: 0 };
+    const EXERCISE_SCORE: Record<string, number> = { '5+x': 15, '3-4x': 12, '1-2x': 7, sedentary: 0 };
+
+    const factors: { key: string; label: string; score: number; max: number }[] = [];
+
+    factors.push({ key: 'bmi', label: 'IMC', score: p.bmiCategory ? (BMI_SCORE[p.bmiCategory] ?? 14) : 14, max: 20 });
+
+    let bpScore = 10; // sem dado — neutro
+    if (p.systolicBp != null && p.diastolicBp != null) {
+      const s = p.systolicBp, d = p.diastolicBp;
+      bpScore = (s < 120 && d < 80) ? 15 : (s < 130 && d < 80) ? 12 : (s < 140 && d < 90) ? 7 : 2;
+    }
+    factors.push({ key: 'bp', label: 'pressão arterial', score: bpScore, max: 15 });
+
+    factors.push({ key: 'smoking', label: 'tabagismo', score: SMOKING_SCORE[p.smokingStatus ?? 'never'] ?? 15, max: 15 });
+    factors.push({ key: 'alcohol', label: 'consumo de álcool', score: ALCOHOL_SCORE[p.alcoholStatus ?? 'none'] ?? 10, max: 10 });
+    factors.push({ key: 'exercise', label: 'sedentarismo', score: p.exerciseFrequency ? (EXERCISE_SCORE[p.exerciseFrequency] ?? 7) : 7, max: 15 });
+
+    const sleepScore = p.sleepQuality != null ? (Number(p.sleepQuality) / 5) * 10 : 6;
+    factors.push({ key: 'sleep', label: 'qualidade do sono', score: sleepScore, max: 10 });
+
+    const stressScore = p.stressLevel != null ? ((10 - Number(p.stressLevel)) / 10) * 15 : 9;
+    factors.push({ key: 'stress', label: 'nível de estresse', score: stressScore, max: 15 });
+
+    const total = factors.reduce((s, f) => s + f.score, 0);
+    const healthScore = Math.max(0, Math.min(100, Math.round(total)));
+
+    const weak = factors.filter((f) => f.score / f.max < 0.5).map((f) => f.label);
+    const healthScoreNotes = weak.length
+      ? `Pontos de atenção: ${weak.join(', ')}.`
+      : 'Nenhum fator de risco relevante identificado nos dados informados.';
+
+    return { healthScore, healthScoreNotes };
+  }
+
+  private withHealthScore(profile: any) {
+    if (!profile) return profile;
+    const hs = this.computeHealthScore(profile);
+    return hs ? { ...profile, ...hs } : profile;
   }
 
   async history(userId: string) {
