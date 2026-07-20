@@ -12,6 +12,8 @@ export type AsoResult = 'apto' | 'apto_restricoes' | 'inapto';
 export interface CreateAsoDto {
   patientDoctorId?: string;
   companyId?: string;
+  // Clínica emissora (opcional — médico pode emitir sem vínculo a uma clínica)
+  clinicId?: string;
   // Empresa
   companyName: string;
   companyCnpj?: string;
@@ -64,15 +66,35 @@ export class AsoService {
     return doc;
   }
 
-  /** Dados do médico para preencher o cabeçalho do ASO. */
+  /** Dados do médico (+ clínicas ativas vinculadas) para preencher o cabeçalho do ASO. */
   async getContext(userId: string) {
     const doc = await this.getDoctor(userId);
+    const links = await this.prisma.clinicDoctor.findMany({
+      where: { doctorId: doc.id, status: 'active' },
+      include: { clinic: { select: { id: true, nomeFantasia: true, razaoSocial: true, cnpj: true } } },
+      orderBy: { joinedAt: 'asc' },
+    });
     return {
       doctorName: doc.user?.fullName ?? '',
       doctorCrm: doc.crm,
       doctorUf: doc.uf,
       doctorSpecialty: doc.specialties?.[0] ?? '',
+      clinics: links.map((l) => ({
+        id: l.clinic.id,
+        name: l.clinic.nomeFantasia || l.clinic.razaoSocial,
+        cnpj: l.clinic.cnpj,
+      })),
     };
+  }
+
+  /** Garante que o médico esteja ativamente vinculado à clínica informada. */
+  private async assertDoctorInClinic(doctorId: string, clinicId: string) {
+    const link = await this.prisma.clinicDoctor.findUnique({
+      where: { clinicId_doctorId: { clinicId, doctorId } },
+    });
+    if (!link || link.status !== 'active') {
+      throw new BadRequestException('Médico não está vinculado a esta clínica.');
+    }
   }
 
   async list(userId: string, page = 1, limit = 20, worker?: string) {
@@ -89,13 +111,23 @@ export class AsoService {
 
   async get(userId: string, id: string) {
     const doc = await this.getDoctor(userId);
-    const aso = await this.prisma.aso.findFirst({ where: { id, doctorId: doc.id } });
+    const aso = await this.prisma.aso.findFirst({
+      where: { id, doctorId: doc.id },
+      include: { clinic: true },
+    });
     if (!aso) throw new NotFoundException('ASO não encontrado');
     return aso;
   }
 
   async create(userId: string, dto: CreateAsoDto) {
     const doc = await this.getDoctor(userId);
+
+    // Clínica emissora (opcional): valida vínculo ativo antes de gravar.
+    let clinicId: string | null = null;
+    if (dto.clinicId) {
+      await this.assertDoctorInClinic(doc.id, dto.clinicId);
+      clinicId = dto.clinicId;
+    }
 
     // Vínculo com empresa cadastrada: puxa os dados automaticamente (snapshot no ASO).
     let companyId: string | null = null;
@@ -120,6 +152,7 @@ export class AsoService {
         doctorId:        doc.id,
         patientDoctorId: dto.patientDoctorId ?? null,
         companyId,
+        clinicId,
         companyName:     dto.companyName,
         companyCnpj:     dto.companyCnpj,
         companyAddress:  dto.companyAddress,
@@ -217,10 +250,13 @@ export class AsoService {
   /** Gera o PDF assinado do ASO (com QR de validação). */
   async generatePdf(userId: string, id: string): Promise<{ buffer: Buffer; aso: any }> {
     const doc = await this.getDoctor(userId);
-    let aso = await this.prisma.aso.findFirst({ where: { id, doctorId: doc.id } });
+    let aso: any = await this.prisma.aso.findFirst({
+      where: { id, doctorId: doc.id },
+      include: { clinic: true },
+    });
     if (!aso) throw new NotFoundException('ASO não encontrado');
 
-    aso = await this.ensureSignature(aso);
+    aso = { ...(await this.ensureSignature(aso)), clinic: aso.clinic };
 
     const apiUrl = process.env.API_URL ?? 'https://api.icodlife.com';
     const verifyUrl = `${apiUrl}/api/v1/aso/verify/${aso.verifyToken}`;

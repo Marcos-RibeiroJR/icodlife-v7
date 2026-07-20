@@ -78,14 +78,31 @@ export class AsoPdfService {
       doc.rect(48, 40, W, 62).fill(COLOR.primary);
       doc.fillColor('#fff').fontSize(17).font('Helvetica-Bold')
         .text('ATESTADO DE SAÚDE OCUPACIONAL', 60, 52, { width: W - 120 });
+      const emissora = aso.clinic?.nomeFantasia || aso.clinic?.razaoSocial;
       doc.fontSize(9).font('Helvetica')
-        .text('Documento emitido conforme a NR-07 — ICODLIFE / Sou Doutor', 60, 76, { width: W - 120 });
+        .text(
+          emissora
+            ? `Emitido por ${emissora} — conforme a NR-07 — ICODLIFE / Sou Doutor`
+            : 'Documento emitido conforme a NR-07 — ICODLIFE / Sou Doutor',
+          60, 76, { width: W - 120 },
+        );
       if (aso.status === 'canceled') {
         doc.fillColor('#FECACA').fontSize(10).font('Helvetica-Bold')
           .text('*** CANCELADO ***', 60, 88, { width: W - 120 });
       }
 
       doc.y = 118;
+
+      // ── 0. CLÍNICA EMISSORA (só quando o ASO tem clínica vinculada) ──────────
+      if (aso.clinic) {
+        this.section(doc, W, '0. Clínica / Estabelecimento Emissor');
+        this.grid(doc, W, [
+          ['Nome', aso.clinic.nomeFantasia || aso.clinic.razaoSocial],
+          ['CNPJ', aso.clinic.cnpj],
+          ['Endereço', [aso.clinic.logradouro, aso.clinic.numero, aso.clinic.bairro, aso.clinic.cidade, aso.clinic.estado].filter(Boolean).join(', '), true],
+          ['Telefone', aso.clinic.telefone],
+        ]);
+      }
 
       // ── 1. EMPRESA ───────────────────────────────────────────────────────────
       this.section(doc, W, '1. Dados da Empresa');

@@ -1,6 +1,6 @@
 'use client';
 // apps/web/src/app/occupational-health/psychosocial-assessment/page.tsx
-import { useState, useEffect, useMemo } from 'react';
+import { Suspense, useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { AppLayout } from '../../../components/layout/AppLayout';
 import { occupationalHealthApi } from '../../../lib/api';
@@ -26,6 +26,14 @@ function ScoreBar({ score, tier }: { score: number; tier: string }) {
 }
 
 export default function PsychosocialAssessmentPage() {
+  return (
+    <Suspense fallback={<AppLayout><div className="p-8 text-center text-slate-400 py-20">Carregando...</div></AppLayout>}>
+      <PsychosocialAssessmentContent />
+    </Suspense>
+  );
+}
+
+function PsychosocialAssessmentContent() {
   const router = useRouter();
   const params = useSearchParams();
   const viewId = params.get('view');

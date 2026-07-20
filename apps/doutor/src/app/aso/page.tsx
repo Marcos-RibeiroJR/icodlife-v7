@@ -32,6 +32,7 @@ const RESULT_BADGE: Record<string, string> = {
 };
 
 const EMPTY = {
+  clinicId: '',
   companyId: '',
   companyName: '', companyCnpj: '', companyAddress: '', companyPhone: '',
   workerName: '', workerCpf: '', workerRg: '', workerBirthDate: '', workerSex: '',
@@ -73,6 +74,7 @@ export default function AsoPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [companies, setCompanies] = useState<any[]>([]);
+  const [clinics, setClinics] = useState<any[]>([]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -85,7 +87,11 @@ export default function AsoPage() {
     setError('');
     empresaApi.list().then(r => setCompanies(r.data?.data ?? [])).catch(() => setCompanies([]));
     asoApi.context()
-      .then(r => setForm({ ...EMPTY, ...r.data, examDate: new Date().toISOString().slice(0, 10) }))
+      .then(r => {
+        const { clinics: c, ...ctx } = r.data ?? {};
+        setClinics(c ?? []);
+        setForm({ ...EMPTY, ...ctx, examDate: new Date().toISOString().slice(0, 10) });
+      })
       .catch(() => setForm({ ...EMPTY, examDate: new Date().toISOString().slice(0, 10) }));
     setShowForm(true);
   };
@@ -150,6 +156,19 @@ export default function AsoPage() {
         {/* ── FORMULÁRIO ── */}
         {showForm && (
           <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-6 mb-6">
+            {clinics.length > 0 && (
+              <Section title="Clínica / Estabelecimento Emissor (opcional)">
+                <Field l="Emitir em nome da clínica" full>
+                  <select className={inp} value={form.clinicId} onChange={e => setForm(f => ({ ...f, clinicId: e.target.value }))}>
+                    <option value="">— Emitir sem clínica vinculada —</option>
+                    {clinics.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}{c.cnpj ? ` — CNPJ ${c.cnpj}` : ''}</option>
+                    ))}
+                  </select>
+                </Field>
+              </Section>
+            )}
+
             <Section title="1. Dados da Empresa">
               <Field l="Empresa cadastrada" full>
                 <select className={inp} value={form.companyId} onChange={e => selectCompany(e.target.value)}>

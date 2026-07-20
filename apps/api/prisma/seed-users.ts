@@ -2,7 +2,7 @@
 // Seed mínimo: cria usuários de teste (paciente + doutor) + catálogo PNI
 // Execute: npx ts-node prisma/seed-users.ts
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../src/generated/prisma';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
