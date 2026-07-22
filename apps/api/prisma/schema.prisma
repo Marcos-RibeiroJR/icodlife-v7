@@ -737,7 +737,32 @@ model PsychosocialAssessment {
   score          Int?
   riskLevel      String?  @map("risk_level")
   aiAnalysis     String?  @db.Text @map("ai_analysis")
-  createdAt      DateTime @default(now()) @map("created_at")
+
+  // Contexto ocupacional (antes recebido e descartado — agora persistido)
+  sector              String? @map("sector")
+  role                String? @map("role")
+  workRegime          String? @map("work_regime")
+  employmentType      String? @map("employment_type")
+  weeklyOvertimeHours Int?    @map("weekly_overtime_hours")
+
+  // Consentimento LGPD (armazenamento) e consentimento específico de compartilhamento
+  // com médico/clínica (finalidade distinta — necessário para aparecer no ASO/PCMSO).
+  consentGiven     Boolean @default(false) @map("consent_given")
+  sharedWithDoctor Boolean @default(false) @map("shared_with_doctor")
+
+  // Breakdown completo por dimensão (score, tier, distribuição Likert por item,
+  // mini-laudo) — persistido no momento do cálculo para o laudo nunca mudar
+  // retroativamente caso o banco de perguntas evolua depois.
+  categoryBreakdown Json? @map("category_breakdown")
+  topRisks          Json? @map("top_risks")
+  recommendations   Json? @map("recommendations")
+
+  // Registro criado na Biblioteca de Exames (HealthRecord) para este laudo
+  healthRecordId String? @map("health_record_id")
+
+  asoRecords Aso[]
+
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@index([userId, createdAt])
   @@map("psychosocial_assessments")
@@ -1261,6 +1286,13 @@ model Aso {
   company            Company?       @relation(fields: [companyId], references: [id])
   clinicId           String?        @map("clinic_id")
   clinic             Clinic?        @relation(fields: [clinicId], references: [id])
+
+  // Riscos psicossociais (NR-01) — vínculo com a última avaliação do paciente
+  // COM consentimento de compartilhamento; snapshot copiado no momento da emissão
+  // do ASO para o documento não mudar se o paciente revogar o consentimento depois.
+  psychosocialAssessmentId String?                 @map("psychosocial_assessment_id")
+  psychosocialAssessment   PsychosocialAssessment? @relation(fields: [psychosocialAssessmentId], references: [id])
+  psychosocialSnapshot     Json?                   @map("psychosocial_snapshot")
 
   // Empresa
   companyName        String         @map("company_name")

@@ -16,6 +16,10 @@ const RESULT_COLOR: Record<string, string> = {
 const RESULT_LABEL: Record<string, string> = {
   apto: 'Apto', apto_restricoes: 'Apto c/ restrições', inapto: 'Inapto',
 };
+const PSY_TIER_BADGE: Record<string, string> = {
+  baixo: 'bg-green-100 text-green-700', moderado: 'bg-yellow-100 text-yellow-700',
+  alto: 'bg-orange-100 text-orange-700', critico: 'bg-red-100 text-red-700',
+};
 
 export default function AsoPage() {
   const [asos, setAsos]       = useState<any[]>([]);
@@ -53,6 +57,7 @@ export default function AsoPage() {
                   <th className="px-4 py-3 font-medium">Tipo</th>
                   <th className="px-4 py-3 font-medium">Data do exame</th>
                   <th className="px-4 py-3 font-medium">Resultado</th>
+                  <th className="px-4 py-3 font-medium">Risco psicossocial</th>
                 </tr>
               </thead>
               <tbody>
@@ -66,6 +71,15 @@ export default function AsoPage() {
                       <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${RESULT_COLOR[a.result] ?? 'bg-slate-100 text-slate-700'}`}>
                         {RESULT_LABEL[a.result] ?? a.result}
                       </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {a.psychosocialSnapshot ? (
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${PSY_TIER_BADGE[a.psychosocialSnapshot.overallTier] ?? 'bg-slate-100 text-slate-700'}`}>
+                          🧠 {a.psychosocialSnapshot.overallScore}/100
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-300">— não compartilhado —</span>
+                      )}
                     </td>
                   </tr>
                 ))}

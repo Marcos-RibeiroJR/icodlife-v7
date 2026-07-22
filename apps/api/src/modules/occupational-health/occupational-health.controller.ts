@@ -1,5 +1,5 @@
 // apps/api/src/modules/occupational-health/occupational-health.controller.ts
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Res, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { OccupationalHealthService } from './occupational-health.service';
@@ -22,7 +22,7 @@ export class OccupationalHealthController {
     return this.svc.list(u.id);
   }
 
-  /** Busca uma avaliação (com laudo completo) */
+  /** Busca uma avaliação (com laudo completo, gráficos por dimensão e gráfico final consolidado) */
   @Get('psychosocial/assessments/:id')
   get(@CurrentUser() u: any, @Param('id') id: string) {
     return this.svc.get(u.id, id);
@@ -32,5 +32,25 @@ export class OccupationalHealthController {
   @Post('psychosocial/assessments')
   create(@CurrentUser() u: any, @Body() dto: CreatePsychosocialAssessmentDto) {
     return this.svc.create(u.id, dto);
+  }
+
+  /** PDF do laudo (com um mini-gráfico por dimensão + gráfico final consolidado) */
+  @Get('psychosocial/assessments/:id/laudo.pdf')
+  async laudoPdf(@CurrentUser() u: any, @Param('id') id: string, @Res() res: any) {
+    const { buffer } = await this.svc.generateLaudoPdf(u.id, id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="laudo-psicossocial-${id.slice(0, 8)}.pdf"`);
+    res.setHeader('Content-Length', buffer.length);
+    res.send(buffer);
+  }
+
+  /**
+   * Liga/desliga o compartilhamento deste laudo com o médico/clínica vinculados.
+   * Consentimento específico (LGPD) — distinto do consentimento de armazenamento
+   * dado ao responder o questionário. Sem isso, o laudo NUNCA aparece no ASO.
+   */
+  @Patch('psychosocial/assessments/:id/sharing')
+  setSharing(@CurrentUser() u: any, @Param('id') id: string, @Body() dto: { shared: boolean }) {
+    return this.svc.setSharing(u.id, id, !!dto.shared);
   }
 }

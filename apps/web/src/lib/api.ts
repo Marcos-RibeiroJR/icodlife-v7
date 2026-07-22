@@ -149,6 +149,8 @@ export const occupationalHealthApi = {
   listAssessments:  ()         => api.get('/occupational-health/psychosocial/assessments'),
   getAssessment:    (id: string) => api.get(`/occupational-health/psychosocial/assessments/${id}`),
   createAssessment: (data: any)  => api.post('/occupational-health/psychosocial/assessments', data),
+  setSharing:       (id: string, shared: boolean) => api.patch(`/occupational-health/psychosocial/assessments/${id}/sharing`, { shared }),
+  getLaudo:         (id: string) => downloadAuthedBlob(`/occupational-health/psychosocial/assessments/${id}/laudo.pdf`),
 };
 
 // ── Saúde Mental ────────────────────────────────────────────────────────────

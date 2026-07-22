@@ -3,7 +3,7 @@
 // Módulo ASO — Atestado de Saúde Ocupacional (NR-07). Emissão, listagem e impressão.
 import { useEffect, useState, useCallback } from 'react';
 import DoctorShell from '@/components/ui/DoctorShell';
-import { asoApi, empresaApi } from '@/lib/api';
+import { api, asoApi, empresaApi } from '@/lib/api';
 
 const EXAM_TYPES = [
   { key: 'admissional',    label: 'Admissional' },
@@ -34,6 +34,7 @@ const RESULT_BADGE: Record<string, string> = {
 const EMPTY = {
   clinicId: '',
   companyId: '',
+  patientDoctorId: '',
   companyName: '', companyCnpj: '', companyAddress: '', companyPhone: '',
   workerName: '', workerCpf: '', workerRg: '', workerBirthDate: '', workerSex: '',
   workerRole: '', workerSector: '', workerRegistration: '', admissionDate: '',
@@ -42,6 +43,11 @@ const EMPTY = {
   complementaryExams: [] as string[], examsOther: '',
   result: 'apto', restrictions: '', observations: '',
   doctorName: '', doctorCrm: '', doctorUf: '', doctorSpecialty: '',
+};
+
+const PSY_TIER_BADGE: Record<string, string> = {
+  baixo: 'bg-green-100 text-green-700', moderado: 'bg-yellow-100 text-yellow-700',
+  alto: 'bg-orange-100 text-orange-700', critico: 'bg-red-100 text-red-700',
 };
 
 function fmtDate(d?: string | null) {
@@ -75,6 +81,7 @@ export default function AsoPage() {
   const [error, setError] = useState('');
   const [companies, setCompanies] = useState<any[]>([]);
   const [clinics, setClinics] = useState<any[]>([]);
+  const [patients, setPatients] = useState<any[]>([]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -86,6 +93,7 @@ export default function AsoPage() {
   const openForm = () => {
     setError('');
     empresaApi.list().then(r => setCompanies(r.data?.data ?? [])).catch(() => setCompanies([]));
+    api.get('/doutor/patients').then(r => setPatients(r.data ?? [])).catch(() => setPatients([]));
     asoApi.context()
       .then(r => {
         const { clinics: c, ...ctx } = r.data ?? {};
@@ -107,6 +115,18 @@ export default function AsoPage() {
       companyCnpj: c.cnpj ?? '',
       companyAddress: addr,
       companyPhone: c.telefonePrincipal ?? c.telefoneRh ?? '',
+    }));
+  };
+
+  const selectPatient = (id: string) => {
+    const p = patients.find(x => x.id === id);
+    if (!p) { setForm(f => ({ ...f, patientDoctorId: '' })); return; }
+    setForm(f => ({
+      ...f,
+      patientDoctorId: p.id,
+      workerName: p.user?.fullName || f.workerName,
+      workerBirthDate: p.user?.dateOfBirth ? String(p.user.dateOfBirth).slice(0, 10) : f.workerBirthDate,
+      workerSex: p.user?.gender === 'male' ? 'Masculino' : p.user?.gender === 'female' ? 'Feminino' : f.workerSex,
     }));
   };
 
@@ -185,6 +205,19 @@ export default function AsoPage() {
             </Section>
 
             <Section title="2. Dados do Trabalhador">
+              <Field l="Paciente cadastrado (opcional)" full>
+                <select className={inp} value={form.patientDoctorId} onChange={e => selectPatient(e.target.value)}>
+                  <option value="">— Trabalhador não cadastrado no IcodLife —</option>
+                  {patients.map(p => (
+                    <option key={p.id} value={p.id}>{p.user?.fullName}{p.user?.icode ? ` — ${p.user.icode}` : ''}</option>
+                  ))}
+                </select>
+                {form.patientDoctorId && (
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Se este paciente tiver compartilhado um laudo de riscos psicossociais (NR-01), ele aparecerá automaticamente no ASO.
+                  </p>
+                )}
+              </Field>
               <Field l="Nome *"><input className={inp} value={form.workerName} onChange={e => setForm(f => ({ ...f, workerName: e.target.value }))} /></Field>
               <Field l="CPF"><input className={inp} value={form.workerCpf} onChange={e => setForm(f => ({ ...f, workerCpf: e.target.value }))} /></Field>
               <Field l="RG"><input className={inp} value={form.workerRg} onChange={e => setForm(f => ({ ...f, workerRg: e.target.value }))} /></Field>
@@ -286,6 +319,11 @@ export default function AsoPage() {
                   <div className="text-xs text-slate-400">
                     {EXAM_LABEL[a.examType] ?? a.examType} · {a.companyName} · {fmtDate(a.examDate)}
                   </div>
+                  {a.psychosocialSnapshot && (
+                    <span className={`inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${PSY_TIER_BADGE[a.psychosocialSnapshot.overallTier] ?? 'bg-slate-100 text-slate-600'}`}>
+                      🧠 Risco psicossocial: {a.psychosocialSnapshot.overallScore}/100
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${RESULT_BADGE[a.result] ?? 'bg-slate-100 text-slate-600'}`}>

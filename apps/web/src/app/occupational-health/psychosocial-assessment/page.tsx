@@ -13,14 +13,56 @@ const TIER_LABEL: Record<string, string> = {
   baixo: '🟢 Risco Baixo', moderado: '🟡 Risco Moderado', alto: '🟠 Risco Alto', critico: '🔴 Risco Critico',
 };
 
+const TIER_HEX: Record<string, string> = {
+  critico: '#dc2626', alto: '#ea580c', moderado: '#d97706', baixo: '#16a34a',
+};
+
 function ScoreBar({ score, tier }: { score: number; tier: string }) {
-  const color =
-    tier === 'critico' ? '#dc2626' :
-    tier === 'alto'    ? '#ea580c' :
-    tier === 'moderado'? '#d97706' : '#16a34a';
+  const color = TIER_HEX[tier] ?? TIER_HEX.baixo;
   return (
     <div className="w-full bg-slate-100 rounded-full h-2 mt-1">
       <div className="h-2 rounded-full transition-all" style={{ width: `${score}%`, backgroundColor: color }} />
+    </div>
+  );
+}
+
+/** Tendência das respostas de uma dimensão na escala Likert (0–4) — "mini-gráfico" por item avaliado. */
+function LikertDistributionChart({ distribution }: { distribution: { value: number; label: string; count: number; pct: number }[] }) {
+  if (!distribution?.length) return null;
+  return (
+    <div className="space-y-1.5 mt-3">
+      {distribution.map((b) => (
+        <div key={b.value} className="flex items-center gap-2">
+          <span className="text-[10px] text-slate-500 w-24 flex-shrink-0 text-right">{b.label}</span>
+          <div className="flex-1 bg-slate-100 rounded-full h-2.5">
+            <div className="h-2.5 rounded-full bg-indigo-500 transition-all" style={{ width: `${Math.max(b.pct, b.pct > 0 ? 2 : 0)}%` }} />
+          </div>
+          <span className="text-[10px] text-slate-500 w-9 flex-shrink-0">{b.pct}%</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Gráfico final consolidado: proporção das 9 dimensões em cada nível de risco (substitui o antigo gráfico único global). */
+function TierProportionBar({ tierDistribution }: { tierDistribution: { tier: string; label: string; count: number; pct: number }[] }) {
+  if (!tierDistribution?.length) return null;
+  const nonZero = tierDistribution.filter(t => t.count > 0);
+  return (
+    <div>
+      <div className="w-full h-5 rounded-full overflow-hidden flex bg-slate-100">
+        {nonZero.map((t) => (
+          <div key={t.tier} style={{ width: `${t.pct}%`, backgroundColor: TIER_HEX[t.tier] ?? '#94a3b8' }} title={`${t.label}: ${t.count}`} />
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-3 mt-2">
+        {tierDistribution.map((t) => (
+          <div key={t.tier} className="flex items-center gap-1.5 text-xs text-slate-600">
+            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: TIER_HEX[t.tier] ?? '#94a3b8' }} />
+            {t.label.replace(/🟢|🟡|🟠|🔴/g, '').trim()}: {t.count} dimensão(ões) — {t.pct}%
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -48,6 +90,8 @@ function PsychosocialAssessmentContent() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]           = useState('');
   const [result, setResult]         = useState<any>(null);
+  const [sharingBusy, setSharingBusy] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   const [context, setContext] = useState({
     sector: '', role: '', workRegime: '', employmentType: '',
@@ -123,6 +167,39 @@ function PsychosocialAssessmentContent() {
       setError(Array.isArray(msg) ? msg.join(' | ') : (msg ?? 'Erro ao enviar avaliacao. Tente novamente.'));
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function toggleSharing(next: boolean) {
+    if (!result?.id) return;
+    setSharingBusy(true);
+    try {
+      const res = await occupationalHealthApi.setSharing(result.id, next);
+      setResult(res.data);
+    } catch {
+      setError('Não foi possível atualizar o compartilhamento. Tente novamente.');
+    } finally {
+      setSharingBusy(false);
+    }
+  }
+
+  async function downloadPdf() {
+    if (!result?.id) return;
+    setDownloadingPdf(true);
+    try {
+      const blob = await occupationalHealthApi.getLaudo(result.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `laudo-psicossocial-${String(result.id).slice(0, 8)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError('Não foi possível gerar o PDF do laudo. Tente novamente.');
+    } finally {
+      setDownloadingPdf(false);
     }
   }
 
@@ -376,13 +453,34 @@ function PsychosocialAssessmentContent() {
                   </div>
                 </div>
 
-                {/* Scores por dominio */}
+                {/* Compartilhamento com médico/clínica + download do PDF */}
+                <div className="card p-5 space-y-3">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" className="mt-0.5 w-4 h-4 accent-[#7B1E1E]"
+                      checked={!!result.sharedWithDoctor} disabled={sharingBusy}
+                      onChange={e => toggleSharing(e.target.checked)} />
+                    <span className="text-sm text-slate-600">
+                      <strong>Compartilhar com meu médico/clínica:</strong> autorizo que este laudo apareça no ASO e
+                      seja visto pelo médico do trabalho responsável. Consentimento específico (LGPD), independente
+                      do consentimento de armazenamento — pode ser desativado a qualquer momento.
+                    </span>
+                  </label>
+                  <button onClick={downloadPdf} disabled={downloadingPdf}
+                    className="w-full border-2 border-slate-200 text-slate-700 font-semibold py-2.5 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50 text-sm">
+                    {downloadingPdf ? 'Gerando PDF...' : '📄 Baixar laudo em PDF'}
+                  </button>
+                </div>
+
+                {/* Scores por dominio + tendência das respostas por item avaliado */}
                 {(result.categoryScores ?? result.categories)?.length > 0 && (
                   <div className="card p-5">
-                    <h3 className="font-bold text-slate-800 mb-4">Scores por dimensao (NR-01)</h3>
-                    <div className="space-y-3">
+                    <h3 className="font-bold text-slate-800 mb-1">Scores por dimensao (NR-01)</h3>
+                    <p className="text-xs text-slate-400 mb-4">
+                      Cada dimensão traz um mini-gráfico com a tendência das respostas na escala (Nunca → Sempre) e um pré-laudo.
+                    </p>
+                    <div className="space-y-5">
                       {(result.categoryScores ?? result.categories).map((cat: any) => (
-                        <div key={cat.category ?? cat.key}>
+                        <div key={cat.category ?? cat.key} className="pb-4 border-b border-slate-100 last:border-0 last:pb-0">
                           <div className="flex items-center justify-between mb-1">
                             <span className="text-sm text-slate-700 font-medium">{cat.label}</span>
                             <div className="flex items-center gap-2">
@@ -396,9 +494,24 @@ function PsychosocialAssessmentContent() {
                           {cat.nrReference && (
                             <div className="text-[10px] text-slate-400 mt-0.5">{cat.nrReference}</div>
                           )}
+                          {cat.distribution && <LikertDistributionChart distribution={cat.distribution} />}
+                          {cat.miniLaudo && (
+                            <p className="text-xs text-slate-500 mt-2 leading-relaxed italic">{cat.miniLaudo}</p>
+                          )}
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* Gráfico final consolidado — substitui a antiga referência global única */}
+                {result.overallChart?.tierDistribution && (
+                  <div className="card p-5">
+                    <h3 className="font-bold text-slate-800 mb-1">Gráfico Final Consolidado</h3>
+                    <p className="text-xs text-slate-400 mb-4">
+                      Proporção das 9 dimensões em cada nível de risco, embasada nos pré-laudos individuais acima.
+                    </p>
+                    <TierProportionBar tierDistribution={result.overallChart.tierDistribution} />
                   </div>
                 )}
 

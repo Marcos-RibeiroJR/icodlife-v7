@@ -35,6 +35,13 @@ const RESULT_COLOR: Record<string, string> = {
   inapto: COLOR.danger,
 };
 
+const PSY_TIER_COLOR: Record<string, string> = {
+  baixo: COLOR.success, moderado: COLOR.warning, alto: COLOR.warning, critico: COLOR.danger,
+};
+const PSY_TIER_LABEL: Record<string, string> = {
+  baixo: 'BAIXO', moderado: 'MODERADO', alto: 'ALTO', critico: 'CRÍTICO',
+};
+
 function fmt(d: Date | string | null | undefined): string {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('pt-BR');
@@ -152,6 +159,30 @@ export class AsoPdfService {
         this.checkboxRow(doc, W, exams.map((e) => ({ label: e, checked: true })));
       } else {
         this.paragraph(doc, W, 'Nenhum exame complementar informado.');
+      }
+
+      // ── 6.1 RISCOS PSICOSSOCIAIS (NR-01) — só quando o paciente compartilhou o laudo ──
+      if (aso.psychosocialSnapshot) {
+        const psy = aso.psychosocialSnapshot;
+        const psyTier = String(psy.overallTier ?? 'baixo');
+        this.section(doc, W, '6.1 Riscos Psicossociais (NR-01) — Laudo Compartilhado pelo Paciente');
+        this.checkNewPage(doc, 40);
+        const py = doc.y;
+        doc.roundedRect(60, py, 200, 26, 4).fill(PSY_TIER_COLOR[psyTier] ?? COLOR.text);
+        doc.fillColor('#fff').fontSize(11).font('Helvetica-Bold')
+          .text(`${psy.overallScore ?? '—'}/100 — ${PSY_TIER_LABEL[psyTier] ?? psyTier.toUpperCase()}`, 60, py + 7, { width: 200, align: 'center' });
+        doc.y = py + 34;
+        doc.fontSize(8).font('Helvetica').fillColor(COLOR.gray)
+          .text(`Avaliação realizada em ${fmt(psy.assessedAt)} — triagem de percepção do trabalhador (não é diagnóstico clínico individual).`, 58, doc.y, { width: W - 20 });
+        doc.moveDown(0.3);
+        const risks: string[] = Array.isArray(psy.topRisks) ? psy.topRisks : [];
+        if (risks.length) {
+          doc.fontSize(8.5).font('Helvetica-Bold').fillColor(COLOR.text).text('Principais fatores de risco identificados:', 58, doc.y);
+          doc.font('Helvetica').text(risks.join('; '), { width: W - 20 });
+        } else {
+          doc.fontSize(8.5).font('Helvetica').fillColor(COLOR.text).text('Nenhum fator em nível alto ou crítico identificado nesta triagem.', 58, doc.y, { width: W - 20 });
+        }
+        doc.moveDown(0.4);
       }
 
       // ── 7. PARECER MÉDICO ────────────────────────────────────────────────────

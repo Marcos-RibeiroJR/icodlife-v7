@@ -147,12 +147,40 @@ export class AsoService {
 
     this.validate(dto);
 
+    // Riscos psicossociais (NR-01): se o trabalhador é um paciente cadastrado (patientDoctorId)
+    // e compartilhou o laudo mais recente com o médico (sharedWithDoctor=true), anexa um
+    // snapshot ao ASO. Sem esse consentimento explícito, o ASO é emitido normalmente, sem a seção.
+    let psychosocialAssessmentId: string | null = null;
+    let psychosocialSnapshot: any = null;
+    if (dto.patientDoctorId) {
+      const patientDoctor = await this.prisma.patientDoctor.findUnique({ where: { id: dto.patientDoctorId } });
+      if (patientDoctor?.userId) {
+        const shared = await this.prisma.psychosocialAssessment.findFirst({
+          where: { userId: patientDoctor.userId, sharedWithDoctor: true },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (shared) {
+          psychosocialAssessmentId = shared.id;
+          psychosocialSnapshot = {
+            assessmentId: shared.id,
+            assessedAt: shared.createdAt,
+            overallScore: shared.score,
+            overallTier: shared.riskLevel,
+            topRisks: shared.topRisks ?? [],
+            categories: shared.categoryBreakdown ?? [],
+          };
+        }
+      }
+    }
+
     const created = await this.prisma.aso.create({
       data: {
         doctorId:        doc.id,
         patientDoctorId: dto.patientDoctorId ?? null,
         companyId,
         clinicId,
+        psychosocialAssessmentId,
+        psychosocialSnapshot,
         companyName:     dto.companyName,
         companyCnpj:     dto.companyCnpj,
         companyAddress:  dto.companyAddress,
