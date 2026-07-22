@@ -10,6 +10,7 @@ export default function MedicosPage() {
   const [doctors, setDoctors] = useState<any[]>([]);
   const [rooms, setRooms]     = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [error, setError]     = useState('');
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving]   = useState(false);
@@ -21,11 +22,12 @@ export default function MedicosPage() {
 
   const load = () => {
     setLoading(true);
+    setLoadError('');
     Promise.all([
       clinicApi.listDoctors().then(r => r.data),
       clinicApi.listRooms().then(r => r.data).catch(() => []),
     ]).then(([d, r]) => { setDoctors(d); setRooms(r); })
-      .catch(err => setError(err.response?.data?.message ?? 'Erro ao carregar médicos'))
+      .catch(err => setLoadError(err.response?.data?.message ?? 'Erro ao carregar médicos'))
       .finally(() => setLoading(false));
   };
 
@@ -110,10 +112,17 @@ export default function MedicosPage() {
           </form>
         )}
 
+        {loadError && (
+          <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg mb-4 flex items-center justify-between">
+            <span>{loadError}</span>
+            <button onClick={load} className="text-xs font-medium underline hover:no-underline">Tentar novamente</button>
+          </div>
+        )}
+
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
           {loading ? (
             <div className="p-8 text-center text-slate-400 text-sm">Carregando...</div>
-          ) : doctors.length === 0 ? (
+          ) : loadError ? null : doctors.length === 0 ? (
             <div className="p-8 text-center text-slate-400 text-sm">Nenhum médico vinculado ainda.</div>
           ) : (
             <table className="w-full text-sm">

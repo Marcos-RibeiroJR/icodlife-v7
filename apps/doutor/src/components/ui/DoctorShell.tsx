@@ -7,6 +7,7 @@ import { getStoredUser, logout, type DoctorUser } from '@/lib/auth';
 
 const NAV = [
   { href: '/dashboard',  label: 'Dashboard',        icon: '◈'  },
+  { href: '/analytics',  label: 'Dashboard Analítico', icon: '📊' },
   { href: '/patients',   label: 'Meu Paciente',      icon: '👥' },
   { href: '/token',      label: 'TOKEN / QR Code',   icon: '📲' },
   { href: '/agenda',     label: 'Minha Agenda',      icon: '📅' },

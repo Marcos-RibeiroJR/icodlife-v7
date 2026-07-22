@@ -32,6 +32,7 @@ import { DoctorAgendaModule } from './modules/doctor-agenda/doctor-agenda.module
 import { DoctorPrescriptionsModule } from './modules/doctor-prescriptions/doctor-prescriptions.module';
 import { DoctorStaffModule } from './modules/doctor-staff/doctor-staff.module';
 import { DoctorFinanceiroModule } from './modules/doctor-financeiro/doctor-financeiro.module';
+import { DoctorAnalyticsModule } from './modules/doctor-analytics/doctor-analytics.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { GlucoseModule } from './modules/glucose/glucose.module';
 import { ExportModule } from './modules/export/export.module';
@@ -79,6 +80,7 @@ import { AuditModule } from './common/audit/audit.module';
     DoctorPrescriptionsModule,
     DoctorStaffModule,
     DoctorFinanceiroModule,
+    DoctorAnalyticsModule,
     ChatModule,
     GlucoseModule,
     ExportModule,

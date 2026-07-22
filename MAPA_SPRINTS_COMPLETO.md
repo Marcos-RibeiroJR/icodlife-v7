@@ -126,6 +126,6 @@ Do V13 ao V17, o repositório acumulou um padrão recorrente de trabalho não co
 
 1. O projeto teve duas fases: paciente/mobile (sprints 1–19, concluída) e SST/Clínicas (sprints 17–25 com numeração própria, também concluída na maior parte).
 2. Backlog de 4 itens grandes segue **0% implementado em código**: Pagamentos, Dashboard Analytics, gov.br/RNDS, e (até esta sessão) Deploy — este último acabou de ganhar a base corrigida.
-3. Módulo Clínicas é o item mais avançado do backlog histórico, com uma pendência de investigação em aberto ("erro ao carregar médicos") que não é causada por migration pendente.
-4. Bug crítico ainda aberto: `medications.service.ts` (Null constraint em `scheduled_times`).
+3. Módulo Clínicas é o item mais avançado do backlog histórico; testes e2e e ASO com cabeçalho de clínica já concluídos nesta sessão. Única pendência de investigação ainda em aberto: "erro ao carregar médicos" (não é migration pendente, nem CORS, nem porta — precisa do body real do erro via DevTools).
+4. Bugs `medications.service.ts` (scheduled_times) e `LifestyleProfile.healthScore` — **resolvidos nesta sessão**.
 5. Risco de perda de trabalho por falta de commit está **mitigado** a partir desta sessão (tudo sincronizado com o GitHub, tag `v8.0` criada, backup completo da pasta gerado).

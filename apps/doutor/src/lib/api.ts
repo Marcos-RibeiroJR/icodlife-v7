@@ -47,3 +47,8 @@ export const empresaApi = {
   remove:     (id: string)            => api.delete(`/doutor/empresas/${id}`),
   lookupCnpj: (cnpj: string)          => api.get(`/doutor/empresas/lookup/${(cnpj || '').replace(/\D/g, '')}`),
 };
+
+// ── Dashboard Analytics (Sprint 20) ───────────────────────────────────────────
+export const analyticsApi = {
+  dashboard: (months = 6) => api.get('/doutor/analytics/dashboard', { params: { months } }),
+};
