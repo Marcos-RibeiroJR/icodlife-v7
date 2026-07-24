@@ -9,10 +9,12 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { randomUUID } from 'crypto';
 import {
   DAILY_QUESTIONS,
+  buildDailyQuestions,
   interpretAnswer,
   computeRisk,
   buildSummaryMessage,
   ExtractedSignal,
+  DailyQuestion,
 } from './health-signals';
 
 @Injectable()
@@ -25,8 +27,21 @@ export class AiChatService {
     return d;
   }
 
-  private questionMessage(index: number): { role: 'assistant'; content: string; timestamp: string } {
-    return { role: 'assistant', content: DAILY_QUESTIONS[index].text, timestamp: new Date().toISOString() };
+  /** Perguntas específicas por medicamento ativo do usuário (nome + horário agendado). */
+  private async loadQuestionsForUser(userId: string): Promise<DailyQuestion[]> {
+    const meds = await this.prisma.medication.findMany({
+      where: { userId, isActive: true },
+      select: { id: true, name: true, dosage: true, scheduledTimes: true },
+    });
+    return buildDailyQuestions(meds);
+  }
+
+  private questionsOf(checkin: any): DailyQuestion[] {
+    return Array.isArray(checkin?.questions) && checkin.questions.length ? checkin.questions : DAILY_QUESTIONS;
+  }
+
+  private questionMessage(questions: DailyQuestion[], index: number): { role: 'assistant'; content: string; timestamp: string } {
+    return { role: 'assistant', content: questions[index].text, timestamp: new Date().toISOString() };
   }
 
   // ── INICIAR / RETOMAR SESSÃO DIÁRIA ───────────────────────────────────────
@@ -49,23 +64,24 @@ export class AiChatService {
       return {
         alreadyCompleted: false,
         sessionId: checkin.sessionId,
-        nextQuestion: this.questionMessage(checkin.questionIndex),
+        nextQuestion: this.questionMessage(this.questionsOf(checkin), checkin.questionIndex),
       };
     }
 
-    // Nova sessão do dia.
+    // Nova sessão do dia — monta as perguntas (fixas + 1 por medicamento/horário ativo).
     const user = await this.prisma.user.findUnique({
       where: { id: userId }, select: { fullName: true },
     });
     const firstName = user?.fullName?.split(' ')[0] ?? 'tudo bem';
     const hour = new Date().getHours();
     const period = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
-    const greeting = `${period}, ${firstName}! 👋 Sou o HealthBot do IcodLife. Vamos fazer um check-in rápido de saúde?\n\n${DAILY_QUESTIONS[0].text}`;
+    const questions = await this.loadQuestionsForUser(userId);
+    const greeting = `${period}, ${firstName}! 👋 Sou o HealthBot do IcodLife. Vamos fazer um check-in rápido de saúde?\n\n${questions[0].text}`;
 
     const sessionId = randomUUID();
     try {
       await this.prisma.healthCheckin.create({
-        data: { userId, sessionId, checkinDate: today, questionIndex: 0, flags: [] },
+        data: { userId, sessionId, checkinDate: today, questionIndex: 0, flags: [], questions: questions as any },
       });
       await this.prisma.aiHealthChat.create({
         data: { userId, sessionId, role: 'assistant', content: greeting, metadata: { questionIndex: 0 } as any },
@@ -93,7 +109,7 @@ export class AiChatService {
           return {
             alreadyCompleted: false,
             sessionId: existing.sessionId,
-            nextQuestion: this.questionMessage(existing.questionIndex),
+            nextQuestion: this.questionMessage(this.questionsOf(existing), existing.questionIndex),
           };
         }
       }
@@ -130,7 +146,8 @@ export class AiChatService {
     });
 
     // Interpreta a resposta em sinais estruturados e persiste.
-    const currentQuestion = DAILY_QUESTIONS[checkin.questionIndex];
+    const questions = this.questionsOf(checkin);
+    const currentQuestion = questions[checkin.questionIndex];
     const extracted = currentQuestion ? interpretAnswer(currentQuestion.key, userMessage) : [];
     if (extracted.length) {
       await this.prisma.healthSignal.createMany({
@@ -145,14 +162,35 @@ export class AiChatService {
       });
     }
 
+    // Pergunta específica de medicamento respondida → grava no histórico de
+    // adesão real (MedicationLog), fechando o ciclo com a Agenda/Biblioteca
+    // de medicamentos em vez de deixar a resposta só no chat.
+    if (currentQuestion?.key === 'medication_check' && currentQuestion.medicationId) {
+      const sig = extracted.find((s) => s.type === 'medication_adherence');
+      if (sig) {
+        const todayStr = today.toISOString().split('T')[0];
+        const time = currentQuestion.scheduledTime ?? '00:00';
+        await this.prisma.medicationLog.create({
+          data: {
+            medicationId: currentQuestion.medicationId,
+            userId,
+            takenAt: new Date(`${todayStr}T${time}:00`),
+            wasSkipped: sig.valueText === 'faltou',
+            skipReason: sig.valueText === 'faltou' ? 'Relatado via HealthBot' : undefined,
+            notes: `Registrado via HealthBot (check-in diário) — ${currentQuestion.medicationName ?? ''} às ${time}`.trim(),
+          },
+        });
+      }
+    }
+
     const nextIndex = checkin.questionIndex + 1;
     const empathyPrefix = extracted.some((s) => s.polarity === 'negative')
       ? 'Entendo, obrigado por compartilhar. '
       : '';
 
     // Ainda há perguntas.
-    if (nextIndex < DAILY_QUESTIONS.length) {
-      const content = `${empathyPrefix}${DAILY_QUESTIONS[nextIndex].text}`;
+    if (nextIndex < questions.length) {
+      const content = `${empathyPrefix}${questions[nextIndex].text}`;
       await this.prisma.aiHealthChat.create({
         data: { userId, sessionId: checkin.sessionId, role: 'assistant', content, metadata: { questionIndex: nextIndex } as any },
       });

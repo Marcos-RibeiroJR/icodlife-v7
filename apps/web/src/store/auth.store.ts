@@ -12,6 +12,7 @@ export interface User {
   avatarUrl?: string;
   status: string;
   icode?: string | null;
+  dateOfBirth?: string;
 }
 
 interface AuthState {

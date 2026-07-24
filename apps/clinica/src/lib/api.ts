@@ -51,7 +51,10 @@ export const clinicApi = {
   createCompany:    (data: any)                => api.post('/clinic/companies', data),
   updateCompany:    (id: string, data: any)    => api.patch(`/clinic/companies/${id}`, data),
   removeCompany:    (id: string)               => api.delete(`/clinic/companies/${id}`),
+  rotateIntakeToken: (id: string)              => api.post(`/clinic/companies/${id}/intake-token`),
   listAsos:         ()                        => api.get('/clinic/asos'),
+  esocialS2220Xml:  (id: string) => api.get(`/clinic/asos/${id}/esocial/s2220`, { params: { format: 'xml' }, responseType: 'blob' }),
+  esocialS2240Xml:  (id: string) => api.get(`/clinic/asos/${id}/esocial/s2240`, { params: { format: 'xml' }, responseType: 'blob' }),
 
   createRoom:       (data: any)               => api.post('/clinic/rooms', data),
   listRooms:        ()                        => api.get('/clinic/rooms'),
@@ -71,6 +74,45 @@ export const clinicApi = {
   financeiroPorMedico: (params?: any)         => api.get('/clinic/financeiro/por-medico', { params }),
   contaCorrente:      (doctorId: string, params?: any) => api.get(`/clinic/financeiro/conta-corrente/${doctorId}`, { params }),
   createContaCorrenteEntry: (doctorId: string, data: any) => api.post(`/clinic/financeiro/conta-corrente/${doctorId}/entries`, data),
+  listExamPrices:     ()                      => api.get('/clinic/financeiro/precos-exame'),
+  saveExamPrices:     (data: { examType: string; price: number }[]) => api.put('/clinic/financeiro/precos-exame', data),
 
   becomeClinicAdmin: (data: any)              => api.post('/auth/become-clinic-admin', data),
+};
+
+// ── Cadastro único iCODLIFE (busca para vincular funcionário/paciente) ───────
+export const icodlifeApi = {
+  search: (q: string) => api.get('/clinic/users/search', { params: { q } }),
+};
+
+// ── Meus Funcionários ────────────────────────────────────────────────────────
+export const employeesApi = {
+  search: (q?: string)   => api.get('/clinic/employees', { params: { q } }),
+  create: (data: any)    => api.post('/clinic/employees', data),
+};
+
+// ── Base de Consultas ────────────────────────────────────────────────────────
+export const consultationRequestsApi = {
+  list:         (params?: any)          => api.get('/clinic/consultation-requests', { params }),
+  get:          (id: string)            => api.get(`/clinic/consultation-requests/${id}`),
+  create:       (data: any)             => api.post('/clinic/consultation-requests', data),
+  updateStatus: (id: string, status: string) => api.patch(`/clinic/consultation-requests/${id}`, { status }),
+};
+
+// ── Formulário público de intake (sem autenticação) ──────────────────────────
+export const publicIntakeApi = {
+  getCompany: (token: string)      => api.get(`/public/intake/${token}`),
+  submit:     (token: string, data: any) => api.post(`/public/intake/${token}`, data),
+};
+
+// ── Atendimento (Guichê) ──────────────────────────────────────────────────────
+export const atendimentoApi = {
+  listCounters:   ()                    => api.get('/clinic/atendimento/guiches'),
+  createCounter:  (data: any)           => api.post('/clinic/atendimento/guiches', data),
+  updateCounter:  (id: string, data: any) => api.patch(`/clinic/atendimento/guiches/${id}`, data),
+  queue:          ()                    => api.get('/clinic/atendimento/fila'),
+  startSession:   (data: any)           => api.post('/clinic/atendimento/sessions', data),
+  endSession:     (id: string, data: any) => api.patch(`/clinic/atendimento/sessions/${id}/end`, data),
+  activeSessions: ()                    => api.get('/clinic/atendimento/sessions/ativas'),
+  productivity:   (params?: any)        => api.get('/clinic/atendimento/produtividade', { params }),
 };

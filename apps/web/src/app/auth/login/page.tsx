@@ -172,10 +172,16 @@ export default function LoginPage() {
             </p>
           )}
           {isDoctor && (
-            <div className="mt-6 text-center space-y-1">
-              <p className="text-xs text-slate-400">Acesso exclusivo para médicos cadastrados no ICODELIFE.</p>
+            <div className="mt-6 text-center space-y-2">
+              <p className="text-sm text-slate-500">
+                Ainda não tem perfil de Doutor?{' '}
+                <a href={`${process.env.NEXT_PUBLIC_DOUTOR_URL ?? 'http://localhost:3002'}/register`}
+                  className="text-blue-600 font-semibold hover:underline">
+                  Cadastrar Doutor
+                </a>
+              </p>
               <p className="text-xs text-slate-400">
-                Solicitações:{' '}
+                Dúvidas:{' '}
                 <a href="mailto:admin@icodelife.com" className="text-blue-600 hover:underline">admin@icodelife.com</a>
               </p>
             </div>

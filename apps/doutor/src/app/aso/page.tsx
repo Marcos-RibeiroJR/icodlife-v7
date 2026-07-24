@@ -41,6 +41,8 @@ const EMPTY = {
   examType: 'admissional', examDate: '', jobDescription: '',
   risks: [] as string[], risksOther: '',
   complementaryExams: [] as string[], examsOther: '',
+  examCodes: {} as Record<string, string>,
+  riskFactorsEsocial: [] as { code: string; description: string; epiEffective: boolean; epiCA?: string }[],
   result: 'apto', restrictions: '', observations: '',
   doctorName: '', doctorCrm: '', doctorUf: '', doctorSpecialty: '',
 };
@@ -139,8 +141,11 @@ export default function AsoPage() {
   const submit = () => {
     setSaving(true); setError('');
     const risks = [...form.risks, ...(form.risksOther ? [form.risksOther] : [])];
-    const complementaryExams = [...form.complementaryExams, ...(form.examsOther ? [form.examsOther] : [])];
-    const { risksOther, examsOther, ...rest } = form;
+    const complementaryExams = [
+      ...form.complementaryExams.map(name => ({ name, procedureCode: form.examCodes[name] || undefined })),
+      ...(form.examsOther ? [{ name: form.examsOther }] : []),
+    ];
+    const { risksOther, examsOther, examCodes, ...rest } = form;
     asoApi.create({ ...rest, risks, complementaryExams })
       .then(() => { setShowForm(false); setForm({ ...EMPTY }); return load(); })
       .catch(e => {
@@ -265,6 +270,55 @@ export default function AsoPage() {
                 ))}
               </div>
               <input className={`${inp} mt-2`} placeholder="Outros exames..." value={form.examsOther} onChange={e => setForm(f => ({ ...f, examsOther: e.target.value }))} />
+
+              {form.complementaryExams.length > 0 && (
+                <div className="mt-3 bg-slate-50 rounded-lg p-3 space-y-1.5">
+                  <p className="text-xs font-semibold text-slate-500">Código eSocial (Tabela 27) — opcional, alimenta o evento S-2220</p>
+                  {form.complementaryExams.map(name => (
+                    <div key={name} className="flex items-center gap-2">
+                      <span className="text-xs text-slate-500 w-32 truncate">{name}</span>
+                      <input className="flex-1 border border-slate-200 rounded-lg px-2 py-1 text-xs"
+                        placeholder="Código Tabela 27 (deixe em branco p/ genérico)"
+                        value={form.examCodes[name] ?? ''}
+                        onChange={e => setForm(f => ({ ...f, examCodes: { ...f.examCodes, [name]: e.target.value } }))} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <h3 className="font-bold text-slate-700 text-sm mb-2">6.1 Fatores de Risco eSocial — Tabela 24 (para o S-2240)</h3>
+              <p className="text-xs text-slate-400 mb-2">
+                Os códigos oficiais da Tabela 24 devem ser conferidos no Manual de Orientação do eSocial vigente.
+              </p>
+              <div className="space-y-2">
+                {form.riskFactorsEsocial.map((rf, i) => (
+                  <div key={i} className="flex items-center gap-2 bg-slate-50 rounded-lg p-2">
+                    <input className="w-28 border border-slate-200 rounded-lg px-2 py-1 text-xs" placeholder="Código"
+                      value={rf.code} onChange={e => setForm(f => ({ ...f, riskFactorsEsocial: f.riskFactorsEsocial.map((x, j) => j === i ? { ...x, code: e.target.value } : x) }))} />
+                    <input className="flex-1 border border-slate-200 rounded-lg px-2 py-1 text-xs" placeholder="Descrição"
+                      value={rf.description} onChange={e => setForm(f => ({ ...f, riskFactorsEsocial: f.riskFactorsEsocial.map((x, j) => j === i ? { ...x, description: e.target.value } : x) }))} />
+                    <label className="flex items-center gap-1 text-xs text-slate-500 flex-shrink-0">
+                      <input type="checkbox" checked={rf.epiEffective}
+                        onChange={e => setForm(f => ({ ...f, riskFactorsEsocial: f.riskFactorsEsocial.map((x, j) => j === i ? { ...x, epiEffective: e.target.checked } : x) }))} />
+                      EPI eficaz
+                    </label>
+                    <button onClick={() => setForm(f => ({ ...f, riskFactorsEsocial: f.riskFactorsEsocial.filter((_, j) => j !== i) }))}
+                      className="text-slate-300 hover:text-red-400 text-lg leading-none flex-shrink-0">×</button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2 mt-2">
+                <button onClick={() => setForm(f => ({ ...f, riskFactorsEsocial: [...f.riskFactorsEsocial, { code: '', description: '', epiEffective: false }] }))}
+                  className="text-xs font-semibold text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-50">
+                  + Adicionar fator de risco
+                </button>
+                <button onClick={() => setForm(f => ({ ...f, riskFactorsEsocial: [...f.riskFactorsEsocial, { code: '09.01.001', description: 'Ausência de fator de risco', epiEffective: false }] }))}
+                  className="text-xs font-semibold text-slate-500 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-50">
+                  + Sem risco (09.01.001)
+                </button>
+              </div>
             </div>
 
             <div>

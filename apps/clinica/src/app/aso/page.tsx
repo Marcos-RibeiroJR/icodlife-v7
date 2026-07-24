@@ -25,6 +25,8 @@ export default function AsoPage() {
   const [asos, setAsos]       = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
+  const [esocialBusy, setEsocialBusy] = useState<string | null>(null);
+  const [esocialError, setEsocialError] = useState('');
 
   useEffect(() => {
     clinicApi.listAsos()
@@ -32,6 +34,32 @@ export default function AsoPage() {
       .catch(err => setError(err.response?.data?.message ?? 'Erro ao carregar ASOs'))
       .finally(() => setLoading(false));
   }, []);
+
+  const downloadEsocial = async (asoId: string, evento: 's2220' | 's2240') => {
+    setEsocialBusy(`${asoId}-${evento}`);
+    setEsocialError('');
+    try {
+      const res = evento === 's2220' ? await clinicApi.esocialS2220Xml(asoId) : await clinicApi.esocialS2240Xml(asoId);
+      const url = URL.createObjectURL(res.data as Blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${evento}-${asoId}.xml`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      // A resposta de erro vem como Blob (responseType: 'blob') — precisa ler como texto p/ extrair a mensagem.
+      let msg = `Erro ao gerar o evento ${evento.toUpperCase()}.`;
+      try {
+        const text = await (e?.response?.data as Blob)?.text?.();
+        if (text) msg = JSON.parse(text)?.message ?? msg;
+      } catch {}
+      setEsocialError(msg);
+    } finally {
+      setEsocialBusy(null);
+    }
+  };
 
   return (
     <ClinicShell>
@@ -42,6 +70,7 @@ export default function AsoPage() {
         </div>
 
         {error && <div className="mb-4 bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg">{error}</div>}
+        {esocialError && <div className="mb-4 bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg">{esocialError}</div>}
 
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
           {loading ? (
@@ -58,6 +87,7 @@ export default function AsoPage() {
                   <th className="px-4 py-3 font-medium">Data do exame</th>
                   <th className="px-4 py-3 font-medium">Resultado</th>
                   <th className="px-4 py-3 font-medium">Risco psicossocial</th>
+                  <th className="px-4 py-3 font-medium">eSocial</th>
                 </tr>
               </thead>
               <tbody>
@@ -80,6 +110,18 @@ export default function AsoPage() {
                       ) : (
                         <span className="text-xs text-slate-300">— não compartilhado —</span>
                       )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-1.5">
+                        <button onClick={() => downloadEsocial(a.id, 's2220')} disabled={esocialBusy === `${a.id}-s2220`}
+                          className="text-xs font-semibold text-blue-600 border border-blue-200 px-2 py-1 rounded-lg hover:bg-blue-50 disabled:opacity-40">
+                          S-2220
+                        </button>
+                        <button onClick={() => downloadEsocial(a.id, 's2240')} disabled={esocialBusy === `${a.id}-s2240`}
+                          className="text-xs font-semibold text-purple-600 border border-purple-200 px-2 py-1 rounded-lg hover:bg-purple-50 disabled:opacity-40">
+                          S-2240
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

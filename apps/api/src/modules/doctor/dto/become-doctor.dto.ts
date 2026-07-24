@@ -52,4 +52,9 @@ export class BecomeDoctorDto {
   @IsOptional()
   @IsUrl()
   website?: string;
+
+  // Sprint 29 — escolha do plano da plataforma (sem cobrança real ainda).
+  @IsOptional()
+  @IsString()
+  planCode?: string;
 }

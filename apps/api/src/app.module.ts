@@ -39,6 +39,7 @@ import { ExportModule } from './modules/export/export.module';
 import { TelemedicineModule } from './modules/telemedicine/telemedicine.module';
 import { PushModule } from './modules/push/push.module';
 import { ClinicModule } from './modules/clinic/clinic.module';
+import { AtendimentoModule } from './modules/atendimento/atendimento.module';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { RedisModule } from './common/redis/redis.module';
 import { AuditModule } from './common/audit/audit.module';
@@ -87,6 +88,7 @@ import { AuditModule } from './common/audit/audit.module';
     TelemedicineModule,
     PushModule,
     ClinicModule,
+    AtendimentoModule,
   ],
 })
 export class AppModule {}

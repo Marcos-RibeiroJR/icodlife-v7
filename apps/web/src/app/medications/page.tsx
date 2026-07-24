@@ -1,34 +1,8 @@
 'use client';
 // apps/web/src/app/medications/page.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AppLayout } from '../../components/layout/AppLayout';
-import { medicationsApi } from '../../lib/api';
-
-// Lista de medicamentos comuns no Brasil (busca local)
-const ANVISA_COMMON = [
-  'Losartana 50mg','Losartana 25mg','Atenolol 25mg','Atenolol 50mg',
-  'Metformina 500mg','Metformina 850mg','Metformina 1000mg',
-  'Atorvastatina 10mg','Atorvastatina 20mg','Atorvastatina 40mg',
-  'Sinvastatina 20mg','Sinvastatina 40mg',
-  'Omeprazol 20mg','Omeprazol 40mg','Pantoprazol 40mg',
-  'AAS 100mg','AAS 500mg','Dipirona 500mg','Dipirona 1g',
-  'Ibuprofeno 400mg','Ibuprofeno 600mg','Paracetamol 500mg','Paracetamol 750mg',
-  'Amoxicilina 500mg','Amoxicilina 875mg','Azitromicina 500mg',
-  'Levotiroxina 25mcg','Levotiroxina 50mcg','Levotiroxina 75mcg','Levotiroxina 100mcg',
-  'Captopril 25mg','Captopril 50mg','Enalapril 5mg','Enalapril 10mg','Enalapril 20mg',
-  'Hidroclorotiazida 25mg','Furosemida 40mg',
-  'Metoprolol 25mg','Metoprolol 50mg','Bisoprolol 5mg',
-  'Amlodipino 5mg','Amlodipino 10mg',
-  'Clonazepam 0.5mg','Clonazepam 2mg','Alprazolam 0.25mg',
-  'Sertralina 50mg','Sertralina 100mg','Fluoxetina 20mg',
-  'Insulina NPH','Insulina Regular','Glibenclamida 5mg',
-  'Prednisona 5mg','Prednisona 20mg','Dexametasona 4mg',
-  'Colecalciferol 7000UI','Vitamina D3 2000UI','Sulfato Ferroso 40mg',
-  'Carbonato de Calcio 500mg','Calcio + Vitamina D',
-  'Ranitidina 150mg','Domperidona 10mg','Metoclopramida 10mg',
-  'Varfarina 5mg','Rivaroxabana 10mg','Rivaroxabana 20mg',
-  'Espironolactona 25mg','Espironolactona 50mg',
-];
+import { medicationsApi, catalogApi } from '../../lib/api';
 
 type View = 'lista' | 'agenda';
 
@@ -38,8 +12,12 @@ const TODAY_KEY  = TODAY_DAYS[new Date().getDay()];
 function todayTaken(med: any, logs: any[]): string[] {
   const todayStr = new Date().toISOString().split('T')[0];
   return logs
+    // Bug real encontrado: o log retornado pelo backend só tem `takenAt`
+    // (não existe coluna `scheduledAt`) — usar `l.scheduledAt.slice(...)`
+    // lançava TypeError (undefined) sempre que havia algum log de hoje,
+    // quebrando a renderização da Agenda de hoje.
     .filter(l => l.medicationId === med.id && l.takenAt && l.takenAt.startsWith(todayStr))
-    .map(l => l.scheduledAt.slice(11, 16));
+    .map(l => l.takenAt.slice(11, 16));
 }
 
 export default function MedicationsPage() {
@@ -50,6 +28,10 @@ export default function MedicationsPage() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving]   = useState(false);
   const [anvisaQ, setAnvisaQ] = useState('');
+  const [anvisaSuggestions, setAnvisaSuggestions] = useState<string[]>([]);
+  const [loadError, setLoadError] = useState('');
+  const [error, setError]     = useState('');
+  const anvisaTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const emptyForm = {
     name: '', dosage: '', times: '08:00',
@@ -61,6 +43,7 @@ export default function MedicationsPage() {
 
   const load = async () => {
     setLoading(true);
+    setLoadError('');
     try {
       const { data } = await medicationsApi.list();
       setMeds(data);
@@ -73,18 +56,29 @@ export default function MedicationsPage() {
         } catch {}
       }
       setLogs(allLogs);
-    } catch {} finally { setLoading(false); }
+    } catch (e: any) {
+      setLoadError(e?.response?.data?.message ?? 'Erro ao carregar medicamentos.');
+    } finally { setLoading(false); }
   };
 
   useEffect(() => { load(); }, []);
 
-  const anvisaSuggestions = anvisaQ.length >= 2
-    ? ANVISA_COMMON.filter(n => n.toLowerCase().includes(anvisaQ.toLowerCase())).slice(0, 6)
-    : [];
+  // Busca no catalogo real (base local ANVISA + consulta ao vivo), com debounce.
+  useEffect(() => {
+    if (anvisaTimer.current) clearTimeout(anvisaTimer.current);
+    if (anvisaQ.trim().length < 2) { setAnvisaSuggestions([]); return; }
+    anvisaTimer.current = setTimeout(() => {
+      catalogApi.searchMedications(anvisaQ, 8)
+        .then(({ data }) => setAnvisaSuggestions(data?.items ?? []))
+        .catch(() => setAnvisaSuggestions([]));
+    }, 300);
+    return () => { if (anvisaTimer.current) clearTimeout(anvisaTimer.current); };
+  }, [anvisaQ]);
 
   const save = async () => {
     if (!form.name) return;
     setSaving(true);
+    setError('');
     try {
       await medicationsApi.create({
         ...form,
@@ -98,7 +92,9 @@ export default function MedicationsPage() {
       setForm(emptyForm);
       setAnvisaQ('');
       load();
-    } catch {} finally { setSaving(false); }
+    } catch (e: any) {
+      setError(e?.response?.data?.message ?? 'Erro ao salvar medicamento. Tente novamente.');
+    } finally { setSaving(false); }
   };
 
   const markTaken = async (medId: string, time: string) => {
@@ -161,6 +157,13 @@ export default function MedicationsPage() {
             </button>
           ))}
         </div>
+
+        {loadError && (
+          <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-4 flex items-center justify-between gap-3">
+            <span>{loadError}</span>
+            <button onClick={load} className="font-semibold underline flex-shrink-0">Tentar novamente</button>
+          </div>
+        )}
 
         {/* ── FORMULARIO ── */}
         {showForm && (
@@ -243,8 +246,13 @@ export default function MedicationsPage() {
                   onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Tomar com agua..." />
               </div>
             </div>
+
+            {error && (
+              <div className="mt-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-3">{error}</div>
+            )}
+
             <div className="flex gap-3 mt-4">
-              <button onClick={() => { setShowForm(false); setForm(emptyForm); setAnvisaQ(''); }}
+              <button onClick={() => { setShowForm(false); setForm(emptyForm); setAnvisaQ(''); setError(''); }}
                 className="flex-1 border border-slate-200 text-slate-600 font-semibold py-2.5 rounded-xl hover:bg-slate-50 transition-colors">
                 Cancelar
               </button>

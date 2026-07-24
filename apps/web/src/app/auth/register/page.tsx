@@ -131,8 +131,7 @@ export default function RegisterPage() {
 
         <div style={styles.header}>
           <div style={styles.logoLine}>
-            <span style={styles.logo}>❤️</span>
-            <span style={styles.logoText}>IcodLife</span>
+            <img src="/logo.svg" alt="IcodLife" style={{ height: 32, width: "auto" }} />
           </div>
           <h1 style={styles.h1}>Criar conta</h1>
         </div>

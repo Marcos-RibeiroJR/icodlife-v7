@@ -27,6 +27,11 @@ export class DoctorsPublicController {
     return this.doctorService.listSpecialties();
   }
 
+  @Get('plans')
+  listPlans() {
+    return this.doctorService.listPlans();
+  }
+
   @Get(':id')
   getPublicProfile(@Param('id') id: string) {
     return this.doctorService.getPublicProfile(id);

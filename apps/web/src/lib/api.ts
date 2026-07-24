@@ -111,6 +111,11 @@ export const menstrualApi = {
   getCalendar:   ()                   => api.get('/menstrual/calendar'),
 };
 
+export const catalogApi = {
+  searchMedications: (q: string, limit?: number) => api.get('/catalog/medications', { params: { q, limit } }),
+  searchExams:       (q: string, limit?: number) => api.get('/catalog/exams', { params: { q, limit } }),
+};
+
 export const medicationsApi = {
   list:          ()                   => api.get('/medications'),
   create:        (data: any)          => api.post('/medications', data),

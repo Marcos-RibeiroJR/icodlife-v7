@@ -168,7 +168,7 @@ export class ExportService {
 
       // ── DADOS DO PACIENTE ──────────────────────────────────────────────────
       doc.y = 140;
-      this.section(doc, W, '👤 Dados do Paciente');
+      this.section(doc, W, 'Dados do Paciente');
 
       const patientData: [string, string][] = [
         ['Nome completo',      user.fullName],
@@ -183,20 +183,20 @@ export class ExportService {
       this.twoColTable(doc, W, patientData);
 
       if ((user as any).allergies?.length > 0) {
-        this.labelValue(doc, W, '⚠️ Alergias', (user as any).allergies.join(' • '), COLOR.danger);
+        this.labelValue(doc, W, 'Alergias', (user as any).allergies.join(' • '), COLOR.danger);
       }
       if ((user as any).chronicConditions?.length > 0) {
-        this.labelValue(doc, W, '🩺 Condições crônicas', (user as any).chronicConditions.join(' • '), COLOR.warning);
+        this.labelValue(doc, W, 'Condições Crônicas', (user as any).chronicConditions.join(' • '), COLOR.warning);
       }
       if ((user as any).emergencyContactName) {
-        this.labelValue(doc, W, '🆘 Contato de emergência',
+        this.labelValue(doc, W, 'Contato de Emergência',
           `${(user as any).emergencyContactName} (${(user as any).emergencyContactRel ?? 'familiar'}) — ${(user as any).emergencyContactPhone ?? ''}`,
           COLOR.text);
       }
 
       // ── MÉTRICAS CORPORAIS ─────────────────────────────────────────────────
       if (bodyMetrics.length > 0) {
-        this.section(doc, W, '⚖️ Métricas Corporais');
+        this.section(doc, W, 'Métricas Corporais');
         const bm = bodyMetrics[0];
         const bmData: [string, string][] = [
           ['Data', fmt(bm.measuredAt)],
@@ -210,7 +210,7 @@ export class ExportService {
 
       // ── MEDICAMENTOS ATIVOS ────────────────────────────────────────────────
       if (medications.length > 0) {
-        this.section(doc, W, '💊 Medicamentos Ativos');
+        this.section(doc, W, 'Medicamentos Ativos');
         medications.forEach((m, i) => {
           this.checkNewPage(doc, 40);
           const y = doc.y;
@@ -227,7 +227,7 @@ export class ExportService {
 
       // ── PRESSÃO ARTERIAL ──────────────────────────────────────────────────
       if (bpReadings.length > 0) {
-        this.section(doc, W, '❤️ Pressão Arterial (últimas medições)');
+        this.section(doc, W, 'Pressão Arterial (Últimas Medições)');
         const bpRows = bpReadings.slice(0, 8).map(r => [
           fmt(r.measuredAt),
           `${r.systolic}/${r.diastolic} mmHg`,
@@ -239,7 +239,7 @@ export class ExportService {
 
       // ── GLICEMIA ──────────────────────────────────────────────────────────
       if (glucoseReadings.length > 0) {
-        this.section(doc, W, '🩸 Glicemia (últimas medições)');
+        this.section(doc, W, 'Glicemia (Últimas Medições)');
         const gRows = glucoseReadings.slice(0, 8).map((r: any) => [
           fmt(r.measuredAt),
           `${Number(r.value).toFixed(0)} mg/dL`,
@@ -264,7 +264,7 @@ export class ExportService {
 
       // ── EXAMES RECENTES ───────────────────────────────────────────────────
       if (examResults.length > 0) {
-        this.section(doc, W, '🧪 Exames Recentes');
+        this.section(doc, W, 'Exames Recentes');
         examResults.forEach(exam => {
           this.checkNewPage(doc, 80);
           doc.fontSize(10).font('Helvetica-Bold').fillColor(COLOR.primary)
@@ -280,7 +280,7 @@ export class ExportService {
             const color  = item.status === 'high' || item.status === 'critical_high' ? COLOR.danger
                          : item.status === 'low'  || item.status === 'critical_low'  ? COLOR.warning
                          : COLOR.success;
-            const symbol = item.status === 'normal' ? '✓' : item.status === 'high' ? '↑' : item.status === 'low' ? '↓' : '!!';
+            const symbol = item.status === 'normal' ? 'OK' : item.status === 'high' ? '(alto)' : item.status === 'low' ? '(baixo)' : '(!)';
             doc.fontSize(9).font('Helvetica').fillColor(COLOR.text)
               .text(`  ${symbol} ${item.marker}:`, 60, doc.y, { continued: true, width: W * 0.45 });
             doc.fillColor(color).font('Helvetica-Bold').text(` ${item.value} ${item.unit}`, { continued: true });
@@ -293,7 +293,7 @@ export class ExportService {
 
       // ── OFTALMOLOGIA ─────────────────────────────────────────────────────
       if (ophthalmologyExams.length > 0) {
-        this.section(doc, W, '\uD83D\uDC41\uFE0F Oftalmologia (auto-exame)');
+        this.section(doc, W, 'Oftalmologia (Auto-exame)');
         const RISK_PT: Record<string, string> = { none: 'Sem alteracao', low: 'Baixo', moderate: 'Moderado', high: 'Alto' };
         const dptO = (v: any) => { const n = Number(v); return Number.isFinite(n) ? `${n > 0 ? '+' : ''}${n.toFixed(2)}D` : '\u2014'; };
         ophthalmologyExams.forEach((o: any) => {
@@ -314,7 +314,7 @@ export class ExportService {
 
       // ── CONSULTAS ────────────────────────────────────────────────────────
       if (appointments.length > 0) {
-        this.section(doc, W, '📅 Consultas Recentes');
+        this.section(doc, W, 'Consultas Recentes');
         const apptRows = appointments.map((a: any) => [
           fmt(a.appointmentAt),
           a.specialty   ?? '—',
@@ -326,7 +326,7 @@ export class ExportService {
 
       // ── VACINAS ──────────────────────────────────────────────────────────
       if (vaccines.length > 0) {
-        this.section(doc, W, '💉 Vacinas Aplicadas');
+        this.section(doc, W, 'Vacinas Aplicadas');
         const vacRows = vaccines.map(v => [
           v.vaccine?.name ?? '—',
           `Dose ${v.doseNumber}`,
@@ -343,7 +343,7 @@ export class ExportService {
       // Fundo azul do header da página de assinatura
       doc.rect(50, sigY, W, 56).fill(COLOR.primary);
       doc.fillColor('#fff').fontSize(16).font('Helvetica-Bold')
-        .text('🔐 Assinatura Digital', 65, sigY + 12);
+        .text('Assinatura Digital', 65, sigY + 12);
       doc.fontSize(9).font('Helvetica')
         .text('Este documento foi gerado e assinado digitalmente pela plataforma IcodeLife', 65, sigY + 36, { width: W - 90 });
 
@@ -391,7 +391,7 @@ export class ExportService {
       doc.rect(50, doc.y, W, 44).fill('#FEF9C3').stroke('#FDE047');
       const noticeY = doc.y + 6;
       doc.fillColor('#92400E').fontSize(8).font('Helvetica-Bold')
-        .text('⚠️  AVISO LEGAL', 60, noticeY);
+        .text('AVISO LEGAL', 60, noticeY);
       doc.font('Helvetica').fillColor('#78350F')
         .text(
           'Este prontuário é um documento médico confidencial. Sua divulgação não autorizada pode constituir violação da LGPD (Lei 13.709/2018). '
@@ -436,10 +436,13 @@ export class ExportService {
     doc.moveDown(0.4);
   }
 
+  // Rótulo em negrito numa linha e valor logo abaixo, indentado — evita o "grudamento"
+  // que o pdfkit causa quando se usa { continued: true } com troca de fonte no meio.
   private labelValue(doc: any, W: number, label: string, value: string, color: string) {
-    this.checkNewPage(doc, 28);
-    doc.fontSize(9).font('Helvetica-Bold').fillColor(color).text(label + ': ', 60, doc.y, { continued: true });
-    doc.font('Helvetica').fillColor(COLOR.text).text(value, { width: W - 30 });
+    this.checkNewPage(doc, 32);
+    doc.fontSize(9).font('Helvetica-Bold').fillColor(color).text(`${label}:`, 60, doc.y, { width: W - 20 });
+    doc.moveDown(0.15);
+    doc.font('Helvetica').fillColor(COLOR.text).text(value, 60, doc.y, { width: W - 20 });
     doc.moveDown(0.3);
   }
 

@@ -4,14 +4,21 @@
 
 export type QuestionKey =
   | 'sleep' | 'bloodpressure' | 'pain' | 'energy'
-  | 'mood' | 'lifestyle' | 'symptoms' | 'nutrition';
+  | 'mood' | 'lifestyle' | 'symptoms' | 'nutrition'
+  | 'medication_check';
 
 export interface DailyQuestion {
   key: QuestionKey;
   text: string;
+  // Presentes apenas em perguntas dinâmicas do tipo 'medication_check'.
+  medicationId?: string;
+  medicationName?: string;
+  scheduledTime?: string;
 }
 
-// Sequência do questionário diário (ordem importa).
+// Sequência-base do questionário diário (ordem importa). As perguntas de
+// medicamento específicas (uma por medicamento/horário ativo do usuário) são
+// inseridas dinamicamente no lugar indicado por buildDailyQuestions().
 export const DAILY_QUESTIONS: DailyQuestion[] = [
   { key: 'sleep',         text: 'Como foi o seu sono esta noite? Dormiu bem? 😴' },
   { key: 'bloodpressure', text: 'Você aferiu a pressão arterial hoje? Se sim, quais foram os valores (ex.: 120/80)?' },
@@ -19,9 +26,44 @@ export const DAILY_QUESTIONS: DailyQuestion[] = [
   { key: 'energy',        text: 'Como está o seu nível de energia? Sentiu cansaço ou fadiga incomum?' },
   { key: 'mood',          text: 'Como está o seu humor hoje? Sentiu ansiedade ou tristeza?' },
   { key: 'lifestyle',     text: 'Comeu alguma refeição pesada hoje (fritura, churrasco, muito sal)?' },
-  { key: 'symptoms',      text: 'Teve algum sintoma incomum? E tomou todos os seus medicamentos nos horários certos?' },
+  { key: 'symptoms',      text: 'Teve algum sintoma incomum hoje (febre, dor, tontura, falta de ar)?' },
   { key: 'nutrition',     text: 'Como foi a sua alimentação e hidratação hoje? Bebeu água suficiente?' },
 ];
+
+export interface ActiveMedicationForBot {
+  id: string;
+  name: string;
+  dosage?: string | null;
+  scheduledTimes?: string[] | null;
+}
+
+/**
+ * Monta a lista de perguntas da sessão do dia: perguntas fixas + uma pergunta
+ * específica por medicamento ativo/horário agendado (em vez da pergunta
+ * genérica de adesão), inseridas antes da pergunta de sintomas gerais.
+ * Ex.: "O medicamento DIOVAN 80mg que você deveria tomar às 08:00, você tomou?"
+ */
+export function buildDailyQuestions(meds: ActiveMedicationForBot[]): DailyQuestion[] {
+  const base = DAILY_QUESTIONS.map((q) => ({ ...q }));
+  const symptomsIdx = base.findIndex((q) => q.key === 'symptoms');
+
+  const medQuestions: DailyQuestion[] = [];
+  for (const m of meds) {
+    const times = m.scheduledTimes && m.scheduledTimes.length ? m.scheduledTimes : ['08:00'];
+    for (const time of times) {
+      medQuestions.push({
+        key: 'medication_check',
+        text: `O medicamento ${m.name}${m.dosage ? ' ' + m.dosage : ''} que você deveria tomar às ${time}, você tomou?`,
+        medicationId: m.id,
+        medicationName: m.name,
+        scheduledTime: time,
+      });
+    }
+  }
+
+  if (medQuestions.length === 0 || symptomsIdx === -1) return base;
+  return [...base.slice(0, symptomsIdx), ...medQuestions, ...base.slice(symptomsIdx)];
+}
 
 export type Polarity = 'positive' | 'neutral' | 'negative';
 
@@ -102,9 +144,22 @@ export function interpretAnswer(key: QuestionKey, raw: string): ExtractedSignal[
       return [{ type: 'heavy_meal', valueText: 'nao', polarity: 'positive' }];
     }
 
+    // Pergunta dinâmica e específica por medicamento (ex.: "o DIOVAN das 08:00, você tomou?").
+    case 'medication_check': {
+      if (any(t, ['nao tomei', 'esqueci', 'deixei de tomar', 'nao tomou', 'faltou', 'nao consegui tomar', 'ainda nao'])) {
+        return [{ type: 'medication_adherence', valueText: 'faltou', polarity: 'negative' }];
+      }
+      if (any(t, ['tomei', 'sim', 'ja tomei', 'em dia', 'certinho', 'ok', 'claro'])) {
+        return [{ type: 'medication_adherence', valueText: 'ok', polarity: 'positive' }];
+      }
+      return [];
+    }
+
     case 'symptoms': {
       const out: ExtractedSignal[] = [];
-      // Adesão a medicamentos
+      // Adesão a medicamentos (fallback genérico — só é usado quando o
+      // usuário não tem medicamentos cadastrados e a pergunta específica
+      // por medicamento não pôde ser gerada).
       if (any(t, ['nao tomei', 'esqueci', 'deixei de tomar', 'nao tomou', 'faltou', 'nao consegui tomar'])) {
         out.push({ type: 'medication_adherence', valueText: 'faltou', polarity: 'negative' });
       } else if (any(t, ['tomei', 'sim', 'todos', 'em dia', 'certinho', 'nos horarios'])) {

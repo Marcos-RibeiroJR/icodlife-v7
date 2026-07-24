@@ -36,6 +36,8 @@ export interface CreateAsoDto {
   // Riscos e exames complementares
   risks?: string[];
   complementaryExams?: any[];
+  // eSocial S-2240 — fatores de risco codificados (Tabela 24) + EPI
+  riskFactorsEsocial?: any[];
   // Parecer
   result: AsoResult;
   restrictions?: string;
@@ -199,6 +201,7 @@ export class AsoService {
         jobDescription:  dto.jobDescription,
         risks:           (dto.risks ?? []) as any,
         complementaryExams: (dto.complementaryExams ?? []) as any,
+        riskFactorsEsocial: dto.riskFactorsEsocial?.length ? (dto.riskFactorsEsocial as any) : undefined,
         result:          dto.result,
         restrictions:    dto.restrictions,
         observations:    dto.observations,

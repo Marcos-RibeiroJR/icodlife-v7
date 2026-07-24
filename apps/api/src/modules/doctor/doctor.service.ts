@@ -23,6 +23,11 @@ export class DoctorService {
     return `DR.${num}.${uf}`;
   }
 
+  // ── Planos da plataforma (público, usado no cadastro) ─────────────────────
+  async listPlans() {
+    return this.prisma.platformPlan.findMany({ where: { isActive: true }, orderBy: { price: 'asc' } });
+  }
+
   // ── Ativar perfil de doutor em conta existente ────────────────────────────
   async becomeDoctor(userId: string, dto: BecomeDoctorDto) {
     const existing = await this.prisma.doctor.findUnique({ where: { userId } });
@@ -36,6 +41,19 @@ export class DoctorService {
 
     const uf = dto.uf.toUpperCase();
     const doctorId = await this.generateDoctorId(uf);
+
+    // Plano escolhido no cadastro — ainda sem cobrança real, só fica
+    // registrado como "pending_payment" (ou "trial" se o plano for gratuito)
+    // até existir um checkout de verdade.
+    let platformPlanId: string | undefined;
+    let platformPlanStatus: 'trial' | 'pending_payment' | undefined;
+    if (dto.planCode) {
+      const plan = await this.prisma.platformPlan.findUnique({ where: { code: dto.planCode } });
+      if (plan && plan.isActive) {
+        platformPlanId = plan.id;
+        platformPlanStatus = Number(plan.price) > 0 ? 'pending_payment' : 'trial';
+      }
+    }
 
     const [doctor] = await this.prisma.$transaction([
       this.prisma.doctor.create({
@@ -53,8 +71,10 @@ export class DoctorService {
           addressState: dto.addressState ?? uf,
           phone: dto.phone,
           website: dto.website,
+          platformPlanId,
+          platformPlanStatus,
         },
-        include: { user: { select: { email: true, fullName: true, icode: true } } },
+        include: { user: { select: { email: true, fullName: true, icode: true } }, platformPlan: true },
       }),
       this.prisma.user.update({
         where: { id: userId },

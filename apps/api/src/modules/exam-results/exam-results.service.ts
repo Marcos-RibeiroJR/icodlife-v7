@@ -4,6 +4,13 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { calcStatus } from './sbpcml-references';
 import { CreateExamResultDto } from './dto/create-exam-result.dto';
 
+// Normaliza o nome do marcador para evitar que a mesma dosagem (ex.: "Colesterol HDL")
+// seja fragmentada em múltiplas entradas por causa de espaços duplicados/extremidades
+// digitados de forma diferente em lançamentos manuais x importação por OCR.
+function normalizeMarker(marker: string): string {
+  return (marker ?? '').trim().replace(/\s+/g, ' ');
+}
+
 @Injectable()
 export class ExamResultsService {
   constructor(private prisma: PrismaService) {}
@@ -25,13 +32,14 @@ export class ExamResultsService {
 
     if (dto.items?.length) {
       for (const item of dto.items) {
-        const { status, refMin, refMax, refSource } = calcStatus(Number(item.value), item.marker, gender);
+        const marker = normalizeMarker(item.marker);
+        const { status, refMin, refMax, refSource } = calcStatus(Number(item.value), marker, gender);
 
         await this.prisma.examResultItem.create({
           data: {
             examId: exam.id,
             userId,
-            marker: item.marker,
+            marker,
             unit: item.unit,
             value: item.value,
             rawValue: item.rawValue ?? String(item.value),
@@ -75,7 +83,7 @@ export class ExamResultsService {
   }
 
   async timeline(userId: string, marker: string, from?: string, to?: string) {
-    const where: any = { userId, marker };
+    const where: any = { userId, marker: normalizeMarker(marker) };
     if (from || to) {
       where.examDate = {};
       if (from) where.examDate.gte = new Date(from);
@@ -94,20 +102,31 @@ export class ExamResultsService {
   }
 
   async availableMarkers(userId: string) {
-    const raw = await this.prisma.examResultItem.groupBy({
-      by: ['marker', 'unit'],
+    // Agrupamos em JS (não via Prisma groupBy por marker+unit) porque a mesma
+    // dosagem pode ter sido registrada com grafias de unidade ligeiramente
+    // diferentes ao longo do tempo (ex.: "mg/dL" x "mg/dl"); agrupar também
+    // pela unidade fragmentava o histórico em "marcadores" distintos com 1
+    // leitura cada, impedindo o gráfico de evolução de aparecer mesmo com
+    // 2+ leituras reais do mesmo marcador (ex.: Colesterol HDL/LDL).
+    const items = await this.prisma.examResultItem.findMany({
       where: { userId },
-      _count: { marker: true },
-      _max: { examDate: true, status: true },
-      orderBy: { _count: { marker: 'desc' } },
+      orderBy: { examDate: 'desc' },
+      select: { marker: true, unit: true, examDate: true, status: true },
     });
-    return raw.map(r => ({
-      marker: r.marker,
-      unit: r.unit,
-      count: r._count.marker,
-      lastDate: r._max.examDate,
-      lastStatus: r._max.status,
-    }));
+
+    const byMarker = new Map<string, { marker: string; unit: string | null; count: number; lastDate: Date; lastStatus: string }>();
+    for (const item of items) {
+      const key = normalizeMarker(item.marker);
+      const existing = byMarker.get(key);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        // Primeira ocorrência ao percorrer em ordem decrescente de data = leitura mais recente
+        byMarker.set(key, { marker: key, unit: item.unit, count: 1, lastDate: item.examDate, lastStatus: item.status });
+      }
+    }
+
+    return Array.from(byMarker.values()).sort((a, b) => b.count - a.count);
   }
 
   async healthSummary(userId: string) {

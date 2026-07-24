@@ -117,6 +117,17 @@ services:
         condition: service_healthy
     networks: [icodlife]
 
+  # ── Landing (site institucional — apps/landing, raiz do domínio) ────────────
+  landing:
+    image: ghcr.io/${GITHUB_REPOSITORY:-icodlife/icodlife}/landing:${IMAGE_TAG:-latest}
+    container_name: icodlife_landing
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+    ports:
+      - "3004:3004"
+    networks: [icodlife]
+
   # ── Nginx reverso (HTTPS + proxy) ──────────────────────────────────────────
   nginx:
     image: nginx:alpine
@@ -133,6 +144,7 @@ services:
       - doutor
       - clinica
       - api
+      - landing
     networks: [icodlife]
 
 volumes:

@@ -19,10 +19,12 @@ async function bootstrap() {
       'http://localhost:3001',
       'http://localhost:3002',
       'http://localhost:3003',
+      'http://localhost:3004',
       'https://app.icodlife.com.br',
       'https://doutor.icodlife.com.br',
       'https://clinica.icodlife.com.br',
       'https://icodlife.com.br',
+      'https://www.icodlife.com.br',
     ],
     credentials: true,
   });

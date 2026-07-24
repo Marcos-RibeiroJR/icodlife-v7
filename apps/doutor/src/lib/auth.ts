@@ -31,13 +31,12 @@ export interface DoctorProfile {
   _count: { patients: number };
 }
 
-export async function login(email: string, password: string) {
+// Autentica e salva o token, sem exigir role='doctor' — usado internamente
+// pelo fluxo de CADASTRO (register/page.tsx), onde o usuário ainda é 'user'
+// comum até o passo become-doctor rodar logo em seguida.
+async function authenticate(email: string, password: string) {
   const res = await api.post('/auth/login', { email, password });
   const { accessToken, user } = res.data;
-
-  if (user.role !== 'doctor') {
-    throw new Error('Esta conta não possui perfil de Doutor. Acesse icodlife.com para ativar.');
-  }
 
   if (typeof window !== 'undefined') {
     localStorage.setItem('doutor_token', accessToken);
@@ -45,6 +44,32 @@ export async function login(email: string, password: string) {
   }
   return { accessToken, user };
 }
+
+// Login da tela /login — aqui sim a conta já deve ter perfil de doutor ativo.
+export async function login(email: string, password: string) {
+  const { accessToken, user } = await authenticate(email, password);
+
+  if (user.role !== 'doctor') {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('doutor_token');
+      localStorage.removeItem('doutor_user');
+    }
+    throw new Error('Esta conta não possui perfil de Doutor. Acesse icodlife.com para ativar.');
+  }
+
+  return { accessToken, user };
+}
+
+// Após become-doctor ativar o perfil, atualiza o usuário salvo localmente
+// (role já vem como 'doctor' na resposta do become-doctor's user, mas o
+// localStorage ainda tem a versão antiga salva por `authenticate`).
+export function updateStoredUser(user: DoctorUser) {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('doutor_user', JSON.stringify(user));
+  }
+}
+
+export { authenticate };
 
 export function logout() {
   if (typeof window !== 'undefined') {

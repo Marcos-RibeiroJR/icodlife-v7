@@ -26,6 +26,8 @@ const EMPTY = {
   respLegalNome: '', respLegalCpf: '', respLegalCargo: '', respLegalTel: '', respLegalEmail: '',
   // Medicina (flags JSON)
   temPcmso: false, temPgr: false, temLtcat: false, temErgonomico: false, temPca: false, temPpr: false, temAet: false,
+  // Médico responsável/coordenador do PCMSO — exigido pelo evento eSocial S-2220 (grupo respMonit)
+  pcmsoRespNome: '', pcmsoRespCpf: '', pcmsoRespCrm: '', pcmsoRespCrmUf: '',
   metadata: null as any,
 };
 
@@ -56,6 +58,7 @@ function buildPayload(f: typeof EMPTY) {
     medicina: {
       pcmso: f.temPcmso, pgr: f.temPgr, ltcat: f.temLtcat, laudoErgonomico: f.temErgonomico,
       pca: f.temPca, ppr: f.temPpr, aet: f.temAet,
+      pcmsoResp: { nome: f.pcmsoRespNome, cpf: f.pcmsoRespCpf, crm: f.pcmsoRespCrm, crmUf: f.pcmsoRespCrmUf },
     },
     ...(f.metadata ? { metadata: f.metadata } : {}),
   };
@@ -115,6 +118,7 @@ export default function EmpresasPage() {
       respSstNome: r.sst?.nome ?? '', respSstCpf: r.sst?.cpf ?? '', respSstReg: r.sst?.registro ?? '', respSstTel: r.sst?.telefone ?? '', respSstEmail: r.sst?.email ?? '',
       respLegalNome: r.representanteLegal?.nome ?? '', respLegalCpf: r.representanteLegal?.cpf ?? '', respLegalCargo: r.representanteLegal?.cargo ?? '', respLegalTel: r.representanteLegal?.telefone ?? '', respLegalEmail: r.representanteLegal?.email ?? '',
       temPcmso: !!m.pcmso, temPgr: !!m.pgr, temLtcat: !!m.ltcat, temErgonomico: !!m.laudoErgonomico, temPca: !!m.pca, temPpr: !!m.ppr, temAet: !!m.aet,
+      pcmsoRespNome: m.pcmsoResp?.nome ?? '', pcmsoRespCpf: m.pcmsoResp?.cpf ?? '', pcmsoRespCrm: m.pcmsoResp?.crm ?? '', pcmsoRespCrmUf: m.pcmsoResp?.crmUf ?? '',
     });
     setShowForm(true);
   };
@@ -292,6 +296,13 @@ export default function EmpresasPage() {
                 ))}
               </div>
             </div>
+
+            <Section title="Médico responsável pelo PCMSO (exigido pelo eSocial S-2220)">
+              <F l="Nome" v={form.pcmsoRespNome} on={set('pcmsoRespNome')} />
+              <F l="CPF" v={form.pcmsoRespCpf} on={set('pcmsoRespCpf')} />
+              <F l="CRM" v={form.pcmsoRespCrm} on={set('pcmsoRespCrm')} />
+              <F l="UF do CRM" v={form.pcmsoRespCrmUf} on={set('pcmsoRespCrmUf')} />
+            </Section>
 
             {error && <p className="text-sm text-red-600">{error}</p>}
             <div className="flex gap-2">

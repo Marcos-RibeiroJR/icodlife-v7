@@ -6,7 +6,8 @@ export class UsersService {
   async findMe(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('Usuário não encontrado');
-    return user;
+    const { passwordHash, ...safe } = user as any;
+    return safe;
   }
   update(userId: string, data: any) { return this.prisma.user.update({ where: { id: userId }, data }); }
   getSessions(userId: string) { return this.prisma.userSession.findMany({ where: { userId, expiresAt: { gt: new Date() } } }); }

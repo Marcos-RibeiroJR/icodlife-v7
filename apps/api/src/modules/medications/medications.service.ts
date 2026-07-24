@@ -48,6 +48,9 @@ export class MedicationsService {
 
     const scheduledTimes = this.extractScheduledTimes(d);
 
+    const totalPills     = d.totalPills     !== undefined && d.totalPills     !== '' ? Number(d.totalPills)     : undefined;
+    const remainingPills = d.remainingPills !== undefined && d.remainingPills !== '' ? Number(d.remainingPills) : undefined;
+
     const created = await this.prisma.medication.create({
       data: {
         userId,
@@ -61,6 +64,15 @@ export class MedicationsService {
         prescribingDoctor: d.prescribingDoctor,
         notes: d.notes,
         isActive: true,
+        lastPurchaseDate: d.lastPurchaseDate ? new Date(d.lastPurchaseDate) : undefined,
+        totalPills,
+        remainingPills,
+        // Alimenta o recurso de alerta de estoque baixo (ja existia no scheduler
+        // mas nunca era populado por nenhuma tela): espelha remainingPills em
+        // stockQuantity e define um limiar padrao de 5 unidades quando aplicavel.
+        stockQuantity: remainingPills,
+        stockUnit: remainingPills !== undefined ? (d.stockUnit || 'comprimidos') : undefined,
+        lowStockAlert: remainingPills !== undefined ? (d.lowStockAlert !== undefined ? Number(d.lowStockAlert) : 5) : undefined,
       },
     });
     return this.mapOut(created);
@@ -81,6 +93,17 @@ export class MedicationsService {
     if (d.prescribingDoctor !== undefined) data.prescribingDoctor = d.prescribingDoctor;
     if (d.notes !== undefined) data.notes = d.notes;
     if (d.isActive !== undefined) data.isActive = d.isActive;
+    if (d.lastPurchaseDate !== undefined) data.lastPurchaseDate = d.lastPurchaseDate ? new Date(d.lastPurchaseDate) : null;
+    if (d.totalPills !== undefined) data.totalPills = d.totalPills !== '' ? Number(d.totalPills) : null;
+    if (d.remainingPills !== undefined) {
+      const remainingPills = d.remainingPills !== '' ? Number(d.remainingPills) : null;
+      data.remainingPills = remainingPills;
+      data.stockQuantity = remainingPills;
+      if (remainingPills !== null) {
+        data.stockUnit = d.stockUnit || 'comprimidos';
+        if (d.lowStockAlert !== undefined) data.lowStockAlert = Number(d.lowStockAlert);
+      }
+    }
     return this.prisma.medication.updateMany({ where: { id, userId }, data });
   }
 

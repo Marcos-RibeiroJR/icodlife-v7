@@ -1,12 +1,12 @@
 'use client';
 // apps/doutor/src/app/register/page.tsx
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { api } from '@/lib/api';
-import { login } from '@/lib/auth';
+import { authenticate, updateStoredUser, getStoredUser } from '@/lib/auth';
 
 const SPECIALTIES = [
   'Clínica Geral', 'Cardiologia', 'Dermatologia', 'Endocrinologia',
@@ -28,7 +28,11 @@ const schema = z.object({
   // Perfil doutor
   crm:                    z.string().min(4, 'CRM inválido').max(10),
   uf:                     z.string().length(2, 'Selecione o estado'),
-  specialties:            z.array(z.string()).min(1, 'Selecione ao menos uma especialidade'),
+  // Validado separadamente via `selectedSpecs` (estado local, não é um campo
+  // registrado no react-hook-form) — ver goStep3(). Se exigirmos min(1) aqui,
+  // o handleSubmit falha silenciosamente sempre, pois este campo nunca é
+  // preenchido pelo RHF e o erro só aparecia na tela do Step 2.
+  specialties:            z.array(z.string()).optional(),
   bio:                    z.string().optional(),
   consultPrice:           z.string().optional(),
   addressCity:            z.string().optional(),
@@ -39,13 +43,22 @@ export default function RegisterPage() {
   const router = useRouter();
   const [error, setError]   = useState('');
   const [loading, setLoading] = useState(false);
-  const [step, setStep]     = useState<1 | 2>(1);
+  const [step, setStep]     = useState<1 | 2 | 3>(1);
   const [selectedSpecs, setSelectedSpecs] = useState<string[]>([]);
+  const [plans, setPlans] = useState<any[]>([]);
+  const [selectedPlan, setSelectedPlan] = useState<string>('');
 
   const { register, handleSubmit, formState: { errors }, getValues, trigger } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { specialties: [] },
   });
+
+  useEffect(() => {
+    api.get('/doctors/plans').then((r) => {
+      setPlans(r.data ?? []);
+      if (r.data?.length) setSelectedPlan(r.data[0].code);
+    }).catch(() => {});
+  }, []);
 
   const toggleSpec = (s: string) => {
     setSelectedSpecs(prev =>
@@ -58,11 +71,16 @@ export default function RegisterPage() {
     if (ok) setStep(2);
   };
 
-  const onSubmit = async (data: FormData) => {
+  const goStep3 = () => {
     if (selectedSpecs.length === 0) {
       setError('Selecione ao menos uma especialidade');
       return;
     }
+    setError('');
+    setStep(3);
+  };
+
+  const onSubmit = async (data: FormData) => {
     setLoading(true);
     setError('');
     try {
@@ -77,10 +95,11 @@ export default function RegisterPage() {
         acceptedDataProcessing: true,
       });
 
-      // 2. Login para obter token
-      await login(data.email, data.password);
+      // 2. Login para obter token (sem exigir role='doctor' — ainda é 'user' comum
+      //    neste ponto, o become-doctor abaixo é quem promove a conta)
+      await authenticate(data.email, data.password);
 
-      // 3. Ativa perfil de doutor
+      // 3. Ativa perfil de doutor (já com o plano escolhido, sem cobrança real ainda)
       await api.post('/auth/become-doctor', {
         crm:          data.crm,
         uf:           data.uf,
@@ -89,9 +108,16 @@ export default function RegisterPage() {
         consultPrice: data.consultPrice ? Number(data.consultPrice) : undefined,
         addressCity:  data.addressCity,
         addressState: data.uf,
+        planCode:     selectedPlan || undefined,
       });
 
-      router.push('/dashboard');
+      // Atualiza o usuário salvo localmente para refletir role='doctor'
+      // (mantém id/avatarUrl/icode já salvos por `authenticate`, só corrige o role)
+      const stored = getStoredUser();
+      if (stored) updateStoredUser({ ...stored, role: 'doctor' });
+
+      // Leva direto pro currículo, pra completar formação/idiomas/certificações
+      router.push('/profile');
     } catch (err: any) {
       const msg = err.response?.data?.message;
       setError(Array.isArray(msg) ? msg.join(', ') : msg || 'Erro ao criar conta');
@@ -116,16 +142,16 @@ export default function RegisterPage() {
 
         {/* Stepper */}
         <div className="flex items-center justify-center gap-3 mb-6">
-          {[1, 2].map(s => (
+          {[1, 2, 3].map(s => (
             <div key={s} className="flex items-center gap-2">
               <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold
                 ${step >= s ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'}`}>
                 {s}
               </div>
               <span className={`text-xs ${step >= s ? 'text-blue-600 font-medium' : 'text-slate-400'}`}>
-                {s === 1 ? 'Conta' : 'Perfil Doutor'}
+                {s === 1 ? 'Conta' : s === 2 ? 'Perfil Doutor' : 'Plano'}
               </span>
-              {s < 2 && <div className="w-8 h-px bg-slate-300" />}
+              {s < 3 && <div className="w-8 h-px bg-slate-300" />}
             </div>
           ))}
         </div>
@@ -239,6 +265,57 @@ export default function RegisterPage() {
 
                 <div className="flex gap-3">
                   <button type="button" onClick={() => setStep(1)}
+                    className="flex-1 border border-slate-300 text-slate-700 font-medium py-2.5 rounded-lg text-sm hover:bg-slate-50 transition-colors">
+                    Voltar
+                  </button>
+                  <button type="button" onClick={goStep3}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg text-sm transition-colors">
+                    Continuar
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 3 — Plano na plataforma */}
+            {step === 3 && (
+              <div className="space-y-4">
+                <h2 className="text-lg font-semibold text-slate-800 mb-1">Escolha seu plano</h2>
+                <p className="text-xs text-slate-500 mb-2">
+                  Cobrança ainda não está ativa — a plataforma vai avisar quando o pagamento estiver
+                  disponível. Por enquanto você pode usar sua conta normalmente.
+                </p>
+
+                <div className="space-y-2">
+                  {plans.map((p: any) => (
+                    <button key={p.code} type="button" onClick={() => setSelectedPlan(p.code)}
+                      className={`w-full text-left border rounded-xl p-4 transition-colors
+                        ${selectedPlan === p.code ? 'border-blue-600 bg-blue-50' : 'border-slate-200 hover:border-blue-300'}`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-semibold text-slate-800 text-sm">{p.name}</span>
+                        <span className="text-sm font-bold text-blue-700">
+                          {Number(p.price) > 0
+                            ? `${Number(p.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}/mês`
+                            : 'Grátis'}
+                        </span>
+                      </div>
+                      <ul className="text-xs text-slate-500 list-disc list-inside space-y-0.5">
+                        {(p.features ?? []).map((f: string, i: number) => <li key={i}>{f}</li>)}
+                      </ul>
+                    </button>
+                  ))}
+                  {plans.length === 0 && (
+                    <p className="text-xs text-slate-400">Nenhum plano configurado — pode continuar sem selecionar.</p>
+                  )}
+                </div>
+
+                {error && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg">
+                    {error}
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <button type="button" onClick={() => setStep(2)}
                     className="flex-1 border border-slate-300 text-slate-700 font-medium py-2.5 rounded-lg text-sm hover:bg-slate-50 transition-colors">
                     Voltar
                   </button>

@@ -1,9 +1,10 @@
 // apps/api/src/modules/clinic/clinic.controller.ts
 import {
-  Controller, Post, Get, Patch, Delete, Body, Param, Query,
+  Controller, Post, Get, Patch, Put, Delete, Body, Param, Query, Res,
   UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { ClinicService } from './clinic.service';
+import { EsocialEventService } from './esocial/esocial-event.service';
 import { CreateClinicDto } from './dto/create-clinic.dto';
 import { UpdateClinicDto } from './dto/update-clinic.dto';
 import { LinkDoctorDto } from './dto/link-doctor.dto';
@@ -33,7 +34,10 @@ export class BecomeClinicAdminController {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('clinic_admin')
 export class ClinicPanelController {
-  constructor(private readonly clinicService: ClinicService) {}
+  constructor(
+    private readonly clinicService: ClinicService,
+    private readonly esocialService: EsocialEventService,
+  ) {}
 
   @Get('me')
   getMyClinic(@CurrentUser() user: any) {
@@ -148,6 +152,39 @@ export class ClinicPanelController {
     return this.clinicService.listAsos(user.id);
   }
 
+  // ── eSocial (S-2220 / S-2240) gerados a partir do ASO ───────────────────
+  @Get('asos/:id/esocial/s2220')
+  async esocialS2220(
+    @CurrentUser() user: any, @Param('id') id: string,
+    @Query('format') format: string | undefined, @Res() res: any,
+  ) {
+    await this.clinicService.assertAsoInClinic(user.id, id);
+    const evento = await this.esocialService.buildS2220(id);
+    if (format === 'xml') {
+      const xml = this.esocialService.toXml('evtMonit', evento);
+      res.setHeader('Content-Type', 'application/xml');
+      res.setHeader('Content-Disposition', `attachment; filename="s2220-${id}.xml"`);
+      return res.send(xml);
+    }
+    return res.json(evento);
+  }
+
+  @Get('asos/:id/esocial/s2240')
+  async esocialS2240(
+    @CurrentUser() user: any, @Param('id') id: string,
+    @Query('format') format: string | undefined, @Res() res: any,
+  ) {
+    await this.clinicService.assertAsoInClinic(user.id, id);
+    const evento = await this.esocialService.buildS2240(id);
+    if (format === 'xml') {
+      const xml = this.esocialService.toXml('evtCondAmb', evento);
+      res.setHeader('Content-Type', 'application/xml');
+      res.setHeader('Content-Disposition', `attachment; filename="s2240-${id}.xml"`);
+      return res.send(xml);
+    }
+    return res.json(evento);
+  }
+
   // ── salas ────────────────────────────────────────────────────────────────
   @Post('rooms')
   createRoom(@CurrentUser() user: any, @Body() dto: ClinicRoomDto) {
@@ -215,13 +252,39 @@ export class ClinicPanelController {
 
   // ── financeiro ───────────────────────────────────────────────────────────
   @Get('financeiro/dre')
-  financeiroDre(@CurrentUser() user: any, @Query('from') from?: string, @Query('to') to?: string) {
-    return this.clinicService.financeiroDre(user.id, from, to);
+  financeiroDre(
+    @CurrentUser() user: any,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('doctorId') doctorId?: string,
+    @Query('roomId') roomId?: string,
+    @Query('counterId') counterId?: string,
+    @Query('examType') examType?: string,
+  ) {
+    return this.clinicService.financeiroDre(user.id, from, to, { doctorId, roomId, counterId, examType });
   }
 
   @Get('financeiro/por-medico')
-  financeiroPorMedico(@CurrentUser() user: any, @Query('from') from?: string, @Query('to') to?: string) {
-    return this.clinicService.financeiroPorMedico(user.id, from, to);
+  financeiroPorMedico(
+    @CurrentUser() user: any,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('doctorId') doctorId?: string,
+    @Query('roomId') roomId?: string,
+    @Query('counterId') counterId?: string,
+    @Query('examType') examType?: string,
+  ) {
+    return this.clinicService.financeiroPorMedico(user.id, from, to, { doctorId, roomId, counterId, examType });
+  }
+
+  @Get('financeiro/precos-exame')
+  listExamPrices(@CurrentUser() user: any) {
+    return this.clinicService.listExamPrices(user.id);
+  }
+
+  @Put('financeiro/precos-exame')
+  upsertExamPrices(@CurrentUser() user: any, @Body() dto: { examType: string; price: number }[]) {
+    return this.clinicService.upsertExamPrices(user.id, dto);
   }
 
   // ── conta corrente por médico (extrato + saldo, inclui custo de salas) ────
@@ -231,8 +294,11 @@ export class ClinicPanelController {
     @Param('doctorId') doctorId: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('roomId') roomId?: string,
+    @Query('counterId') counterId?: string,
+    @Query('examType') examType?: string,
   ) {
-    return this.clinicService.getContaCorrente(user.id, doctorId, from, to);
+    return this.clinicService.getContaCorrente(user.id, doctorId, from, to, { roomId, counterId, examType });
   }
 
   @Post('financeiro/conta-corrente/:doctorId/entries')

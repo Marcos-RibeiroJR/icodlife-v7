@@ -18,14 +18,14 @@ export const SCALE_LABELS: { value: number; label: string }[] = [
   { value: 4, label: 'Sempre' },
 ];
 
-interface LikertBucket {
+export interface LikertBucket {
   value: number;
   label: string;
   count: number;
   pct: number; // % das respostas desta dimensão que caíram neste valor
 }
 
-interface CategoryResult {
+export interface CategoryResult {
   category: PsychosocialCategory;
   label: string;
   nrReference: string;
@@ -39,9 +39,9 @@ interface CategoryResult {
   miniLaudo: string;
 }
 
-interface TierCount { tier: RiskTier; label: string; count: number; pct: number; }
+export interface TierCount { tier: RiskTier; label: string; count: number; pct: number; }
 
-interface OverallChart {
+export interface OverallChart {
   byCategory: { category: PsychosocialCategory; label: string; score0to100: number; tier: RiskTier }[];
   tierDistribution: TierCount[];
 }

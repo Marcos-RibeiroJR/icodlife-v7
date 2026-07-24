@@ -40,6 +40,7 @@ const NAV_SPECIALTIES = [
 
 const NAV_BOTTOM = [
   { href: '/notificacoes',        icon: '🔔', label: 'Notificações' },
+  { href: '/carteirinha',         icon: '🪪', label: 'Carteirinha' },
   { href: '/profile',             icon: '👤', label: 'Meu Perfil' },
   { href: '/access-management',  icon: '🔒', label: 'Acessos' },
 ];

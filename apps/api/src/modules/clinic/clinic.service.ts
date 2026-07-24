@@ -571,6 +571,17 @@ export class ClinicService {
     });
   }
 
+  /** Garante que o ASO pertence à clínica logada (direto ou via médico ativo) — usado pelo gerador eSocial. */
+  async assertAsoInClinic(userId: string, asoId: string) {
+    const clinic = await this.requireClinicByOwner(userId);
+    const doctorIds = await this.activeDoctorIds(clinic.id);
+    const aso = await this.prisma.aso.findFirst({
+      where: { id: asoId, OR: [{ clinicId: clinic.id }, { doctorId: { in: doctorIds } }] },
+    });
+    if (!aso) throw new NotFoundException('ASO não encontrado.');
+    return aso;
+  }
+
   // ── Salas ──────────────────────────────────────────────────────────────
   async createRoom(userId: string, dto: ClinicRoomDto) {
     const clinic = await this.requireClinicByOwner(userId);
@@ -694,18 +705,39 @@ export class ClinicService {
     });
   }
 
+  /** Aplica os filtros comuns do extrato de faturamento (médico/sala/guichê/exame)
+   * diretamente no `where` do Prisma — nunca em memória, para não trazer dados
+   * de mais do banco à toa. */
+  private applyFinanceiroFilters(where: any, filters?: { doctorId?: string; roomId?: string; counterId?: string; examType?: string }) {
+    if (!filters) return where;
+    if (filters.doctorId) where.doctorId = filters.doctorId;
+    if (filters.roomId) where.roomId = filters.roomId;
+    if (filters.counterId) where.counterId = filters.counterId;
+    if (filters.examType) where.examType = filters.examType;
+    return where;
+  }
+
   // ── Financeiro consolidado ─────────────────────────────────────────────
-  async financeiroDre(userId: string, from?: string, to?: string) {
+  async financeiroDre(
+    userId: string,
+    from?: string,
+    to?: string,
+    filters?: { doctorId?: string; roomId?: string; counterId?: string; examType?: string },
+  ) {
     const clinic = await this.requireClinicByOwner(userId);
     const doctorIds = await this.activeDoctorIds(clinic.id);
     if (doctorIds.length === 0) return { entradas: 0, saidas: 0, saldo: 0, porCategoria: [] };
+    if (filters?.doctorId) await this.assertDoctorInClinic(clinic.id, filters.doctorId);
 
-    const where: any = { doctorId: { in: doctorIds } };
+    const where: any = {
+      doctorId: filters?.doctorId ? filters.doctorId : { in: doctorIds },
+    };
     if (from || to) {
       where.entryDate = {};
       if (from) where.entryDate.gte = new Date(from);
       if (to) where.entryDate.lte = new Date(to);
     }
+    this.applyFinanceiroFilters(where, { roomId: filters?.roomId, counterId: filters?.counterId, examType: filters?.examType });
 
     const entries = await this.prisma.doctorCashEntry.findMany({ where });
     const entradas = entries.filter((e) => e.type === 'income').reduce((s, e) => s + Number(e.amount), 0);
@@ -723,10 +755,16 @@ export class ClinicService {
     };
   }
 
-  async financeiroPorMedico(userId: string, from?: string, to?: string) {
+  async financeiroPorMedico(
+    userId: string,
+    from?: string,
+    to?: string,
+    filters?: { doctorId?: string; roomId?: string; counterId?: string; examType?: string },
+  ) {
     const clinic = await this.requireClinicByOwner(userId);
+    if (filters?.doctorId) await this.assertDoctorInClinic(clinic.id, filters.doctorId);
     const links = await this.prisma.clinicDoctor.findMany({
-      where: { clinicId: clinic.id, status: 'active' },
+      where: { clinicId: clinic.id, status: 'active', ...(filters?.doctorId ? { doctorId: filters.doctorId } : {}) },
       include: { doctor: { include: { user: { select: { fullName: true } } } } },
     });
 
@@ -736,6 +774,7 @@ export class ClinicService {
       if (from) where.entryDate.gte = new Date(from);
       if (to) where.entryDate.lte = new Date(to);
     }
+    this.applyFinanceiroFilters(where, { roomId: filters?.roomId, counterId: filters?.counterId, examType: filters?.examType });
 
     const result = [];
     for (const link of links) {
@@ -764,7 +803,13 @@ export class ClinicService {
   }
 
   // ── Conta corrente do médico na clínica (extrato + saldo) ─────────────────
-  async getContaCorrente(userId: string, doctorId: string, from?: string, to?: string) {
+  async getContaCorrente(
+    userId: string,
+    doctorId: string,
+    from?: string,
+    to?: string,
+    filters?: { roomId?: string; counterId?: string; examType?: string },
+  ) {
     const clinic = await this.requireClinicByOwner(userId);
     await this.assertDoctorInClinic(clinic.id, doctorId);
 
@@ -774,10 +819,11 @@ export class ClinicService {
       if (from) where.entryDate.gte = new Date(from);
       if (to) where.entryDate.lte = new Date(to);
     }
+    this.applyFinanceiroFilters(where, filters);
 
     const entries = await this.prisma.doctorCashEntry.findMany({
       where,
-      include: { room: true },
+      include: { room: true, counter: true },
       orderBy: { entryDate: 'desc' },
     });
 
@@ -812,6 +858,9 @@ export class ClinicService {
       data: {
         doctorId,
         clinicId: clinic.id,
+        roomId: dto.roomId || undefined,
+        counterId: dto.counterId || undefined,
+        examType: dto.examType || undefined,
         type: dto.type,
         category: dto.category || 'ajuste',
         description: dto.description,
@@ -821,5 +870,32 @@ export class ClinicService {
         notes: dto.notes || undefined,
       },
     });
+  }
+
+  // ── Preço por tipo de exame (cobrança automática no guichê) ───────────────
+  async listExamPrices(userId: string) {
+    const clinic = await this.requireClinicByOwner(userId);
+    return this.prisma.clinicExamPrice.findMany({ where: { clinicId: clinic.id }, orderBy: { examType: 'asc' } });
+  }
+
+  async upsertExamPrices(userId: string, dto: { examType: string; price: number }[]) {
+    const clinic = await this.requireClinicByOwner(userId);
+    if (!Array.isArray(dto)) throw new BadRequestException('Envie uma lista de { examType, price }.');
+    const result = [];
+    for (const item of dto) {
+      if (!item.examType) continue;
+      const price = Number(item.price);
+      if (!Number.isFinite(price) || price < 0) {
+        throw new BadRequestException(`Preço inválido para "${item.examType}".`);
+      }
+      result.push(
+        await this.prisma.clinicExamPrice.upsert({
+          where: { clinicId_examType: { clinicId: clinic.id, examType: item.examType } },
+          update: { price },
+          create: { clinicId: clinic.id, examType: item.examType, price },
+        }),
+      );
+    }
+    return result;
   }
 }

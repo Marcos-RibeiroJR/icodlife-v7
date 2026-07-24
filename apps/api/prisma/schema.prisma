@@ -303,6 +303,8 @@ model User {
   deviceTokens            DeviceToken[]
   clinicOwned             Clinic?       @relation("ClinicOwner")
   clinicStaff             ClinicStaff[]
+  companyEmployeeRecords  CompanyEmployee[]
+  consultationRequests    ConsultationRequest[]
 
   @@map("users")
 }
@@ -472,6 +474,9 @@ model Medication {
   stockQuantity     Int?     @map("stock_quantity")
   stockUnit         String?  @map("stock_unit")
   lowStockAlert     Int?     @map("low_stock_alert")
+  lastPurchaseDate  DateTime? @map("last_purchase_date")
+  totalPills        Int?     @map("total_pills")
+  remainingPills    Int?     @map("remaining_pills")
   notes             String?  @db.Text
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
@@ -573,6 +578,7 @@ model HealthCheckin {
   checkinDate    DateTime       @map("checkin_date") // dia do check-in (00:00)
   completed      Boolean        @default(false)
   questionIndex  Int            @default(0) @map("question_index") // progresso do questionário
+  questions      Json?          // lista dinâmica de perguntas da sessão (inclui 1 pergunta por medicamento/horário)
 
   sentimentScore Float?         @map("sentiment_score") // -1..1
   riskScore      Int            @default(0) @map("risk_score") // 0..100
@@ -761,6 +767,7 @@ model PsychosocialAssessment {
   healthRecordId String? @map("health_record_id")
 
   asoRecords Aso[]
+  consultationRequests ConsultationRequest[]
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -895,6 +902,31 @@ model DoctorCounter {
   @@map("doctor_counter")
 }
 
+// Sprint 29 — plano/assinatura do médico na plataforma (terreno pronto para
+// cobrança futura; hoje só registra a escolha, sem checkout/pagamento real).
+enum PlatformPlanStatus {
+  trial
+  pending_payment
+  active
+  canceled
+}
+
+model PlatformPlan {
+  id           String   @id @default(uuid())
+  code         String   @unique
+  name         String
+  price        Decimal
+  billingCycle String   @default("monthly") @map("billing_cycle") // monthly|yearly
+  features     Json     @default("[]") // string[]
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  doctors Doctor[]
+
+  @@map("platform_plans")
+}
+
 model Doctor {
   id            String    @id @default(uuid())
   userId        String    @unique @map("user_id")
@@ -916,6 +948,12 @@ model Doctor {
   languages     String[]                         // idiomas falados
   education     Json      @default("[]")         // [{institution, degree, year}]
   certifications Json     @default("[]") @map("certifications") // [{title, issuer, year}]
+  // Sprint 29 — terreno pronto para plano/assinatura paga da plataforma
+  // (cobrança em si ainda não implementada; escolha do plano fica registrada
+  // aqui desde o cadastro, com status "pending_payment" até existir checkout).
+  platformPlanId     String?             @map("platform_plan_id")
+  platformPlan       PlatformPlan?       @relation(fields: [platformPlanId], references: [id])
+  platformPlanStatus PlatformPlanStatus? @map("platform_plan_status")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
   patients             PatientDoctor[]
@@ -989,9 +1027,27 @@ model Clinic {
   appointments        DoctorAppointment[]
   cashEntries         DoctorCashEntry[]
   chatRooms           ChatRoom[]
+  serviceCounters     ServiceCounter[]
+  examPrices          ClinicExamPrice[]
 
   @@index([cidade, estado])
   @@map("clinics")
+}
+
+// Preço por tipo de exame (admissional|periodico|retorno|mudanca_funcao|demissional)
+// cobrado no atendimento ocupacional via guichê — usado para gerar o faturamento
+// automaticamente ao concluir um atendimento vinculado a um ASO.
+model ClinicExamPrice {
+  id        String   @id @default(uuid())
+  clinicId  String   @map("clinic_id")
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  examType  String   @map("exam_type")
+  price     Decimal
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([clinicId, examType])
+  @@map("clinic_exam_prices")
 }
 
 // vínculo N:N — um médico pode atender em várias clínicas; uma clínica tem vários médicos
@@ -1025,6 +1081,9 @@ model ClinicStaff {
   status    String          @default("active")
   startedAt DateTime        @default(now()) @map("started_at")
   endedAt   DateTime?       @map("ended_at")
+
+  serviceCounters ServiceCounter[]
+  serviceSessions ServiceSession[]
 
   @@index([clinicId])
   @@map("clinic_staff")
@@ -1318,7 +1377,12 @@ model Aso {
 
   // Riscos e exames complementares (JSON)
   risks              Json           // string[]
-  complementaryExams Json           @map("complementary_exams") // [{ name, result?, date? }]
+  complementaryExams Json           @map("complementary_exams") // [{ name, result?, date?, procedureCode?, resultIndicator?, obsProc? }] — os 2 últimos alimentam o evento S-2220
+
+  // Sprint 27 — eSocial S-2240 (Condições Ambientais): fatores de risco codificados
+  // (Tabela 24) + informação de EPI, gerados como evento a partir do ASO.
+  // [{ code, description, epiEffective, epiCA?, startDate? }]
+  riskFactorsEsocial Json?          @map("risk_factors_esocial")
 
   // Parecer médico
   result             String         // apto|apto_restricoes|inapto
@@ -1341,6 +1405,8 @@ model Aso {
 
   createdAt          DateTime       @default(now()) @map("created_at")
   updatedAt          DateTime       @updatedAt @map("updated_at")
+
+  serviceSessions ServiceSession[]
 
   @@index([doctorId, createdAt])
   @@map("asos")
@@ -1419,9 +1485,141 @@ model Company {
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
 
+  // Sprint 27 — Base de Consultas: link público (tokenizado) para a empresa
+  // enviar solicitações de exame/consulta sem precisar de login.
+  intakeToken        String?   @unique @map("intake_token")
+
+  employees            CompanyEmployee[]
+  consultationRequests ConsultationRequest[]
+
   @@unique([doctorId, cnpj])
   @@index([doctorId, razaoSocial])
   @@map("companies")
+}
+
+// ── Sprint 27: Base de Consultas + Atendimento (Guichê) ───────────────────────
+
+// Funcionário de uma empresa cliente — pode ainda não ter conta no IcodLife;
+// quando o ICODE informado bate com um User cadastrado, userId é preenchido
+// automaticamente (auto-vínculo no intake da Base de Consultas).
+model CompanyEmployee {
+  id         String   @id @default(uuid())
+  companyId  String   @map("company_id")
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId     String?  @map("user_id")
+  user       User?    @relation(fields: [userId], references: [id])
+  icode      String?
+  fullName   String   @map("full_name")
+  cpf        String?
+  sector     String?
+  role       String?
+  status     String   @default("active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  consultationRequests ConsultationRequest[]
+
+  @@index([companyId])
+  @@index([userId])
+  @@map("company_employees")
+}
+
+enum ConsultationRequestStatus {
+  pending
+  linked
+  queued
+  in_service
+  completed
+  canceled
+}
+
+// Repositório de solicitações de exame/consulta enviadas pelas empresas
+// clientes (Base de Consultas) — recebidas via formulário público tokenizado
+// (ou registradas manualmente pela recepção da clínica).
+model ConsultationRequest {
+  id             String  @id @default(uuid())
+  companyId      String  @map("company_id")
+  company        Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId     String? @map("employee_id")
+  employee       CompanyEmployee? @relation(fields: [employeeId], references: [id])
+  userId         String? @map("user_id") // preenchido quando o ICODE informado casa com um User cadastrado
+  user           User?   @relation(fields: [userId], references: [id])
+
+  patientName    String  @map("patient_name")
+  patientIcode   String? @map("patient_icode")
+  examType       String  @map("exam_type") // admissional|periodico|retorno|mudanca_funcao|demissional
+  requestedBy    String? @map("requested_by")    // nome de quem preencheu o form na empresa
+  requesterEmail String? @map("requester_email")
+  notes          String? @db.Text
+
+  // Laudo psicossocial do funcionário (se ele já respondeu o questionário e
+  // consentiu compartilhar) — copiado no momento em que a solicitação é
+  // vinculada, para alimentar o guichê/ASO sem depender de nova consulta.
+  psychosocialAssessmentId String?                 @map("psychosocial_assessment_id")
+  psychosocialAssessment   PsychosocialAssessment? @relation(fields: [psychosocialAssessmentId], references: [id])
+  psychosocialSnapshot     Json?                   @map("psychosocial_snapshot")
+
+  source     String                     @default("form") // form|email|manual
+  status     ConsultationRequestStatus  @default(pending)
+  receivedAt DateTime                   @default(now()) @map("received_at")
+
+  serviceSessions ServiceSession[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([companyId, status])
+  @@map("consultation_requests")
+}
+
+// Guichê / posto de atendimento da recepção — vinculado a um funcionário
+// (ClinicStaff) por vez, mede início/fim de atendimento por paciente.
+model ServiceCounter {
+  id        String       @id @default(uuid())
+  clinicId  String       @map("clinic_id")
+  clinic    Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  label     String
+  isActive  Boolean      @default(true) @map("is_active")
+  staffId   String?      @map("staff_id")
+  staff     ClinicStaff? @relation(fields: [staffId], references: [id])
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  sessions    ServiceSession[]
+  cashEntries DoctorCashEntry[]
+
+  @@index([clinicId])
+  @@map("service_counters")
+}
+
+enum ServiceSessionStatus {
+  in_progress
+  completed
+  canceled
+}
+
+// Atendimento individual num guichê — início/fim, vínculo com a solicitação
+// (fila) e com o ASO gerado, base para o relatório de produtividade.
+model ServiceSession {
+  id                    String                @id @default(uuid())
+  counterId             String                @map("counter_id")
+  counter               ServiceCounter        @relation(fields: [counterId], references: [id], onDelete: Cascade)
+  staffId               String                @map("staff_id")
+  staff                 ClinicStaff           @relation(fields: [staffId], references: [id])
+  consultationRequestId String?               @map("consultation_request_id")
+  consultationRequest   ConsultationRequest?  @relation(fields: [consultationRequestId], references: [id])
+  asoId                 String?               @map("aso_id")
+  aso                   Aso?                  @relation(fields: [asoId], references: [id])
+
+  startedAt DateTime              @default(now()) @map("started_at")
+  endedAt   DateTime?             @map("ended_at")
+  status    ServiceSessionStatus  @default(in_progress)
+  notes     String?               @db.Text
+
+  cashEntry DoctorCashEntry?
+
+  @@index([counterId, startedAt])
+  @@index([staffId, startedAt])
+  @@map("service_sessions")
 }
 
 model DoctorExamOrder {
@@ -1476,6 +1674,14 @@ model DoctorCashEntry {
   appointment    DoctorAppointment? @relation(fields: [appointmentId], references: [id])
   roomId         String?           @map("room_id")
   room           ClinicRoom?       @relation(fields: [roomId], references: [id])
+  // Sprint 28 — filtros do extrato de faturamento por guichê/tipo de exame.
+  // Preenchidos automaticamente quando o lançamento vem do atendimento
+  // ocupacional (guichê); ficam nulos para lançamentos de agenda/consulta.
+  counterId        String?         @map("counter_id")
+  counter          ServiceCounter? @relation(fields: [counterId], references: [id])
+  examType         String?         @map("exam_type")
+  serviceSessionId String?         @unique @map("service_session_id")
+  serviceSession   ServiceSession? @relation(fields: [serviceSessionId], references: [id])
   type           String
   category       String
   description    String
@@ -1488,6 +1694,7 @@ model DoctorCashEntry {
   updatedAt      DateTime          @updatedAt @map("updated_at")
 
   @@index([doctorId, entryDate])
+  @@index([counterId])
   @@map("doctor_cash_entries")
 }
 
